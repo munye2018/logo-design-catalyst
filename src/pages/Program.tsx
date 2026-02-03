@@ -2,7 +2,7 @@ import { useNavigate } from 'react-router-dom';
 import { useGlobalContext } from '@/context/GlobalContext';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { ArrowLeft, ArrowRight, Check } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Check, History } from 'lucide-react';
 
 // Phase labels
 const PHASE_LABELS: Record<string, string> = {
@@ -39,7 +39,9 @@ export default function Program() {
             <ArrowLeft className="w-5 h-5" />
           </Button>
           <h1 className="text-xl font-bold">Training Program</h1>
-          <div className="w-10" />
+          <Button variant="ghost" size="icon" onClick={() => navigate('/history')}>
+            <History className="w-5 h-5" />
+          </Button>
         </div>
       </header>
 

@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ArrowLeft, Camera, CameraOff, AlertCircle, CheckCircle, Info, RotateCcw, Volume2, VolumeX } from 'lucide-react';
 import { analyzeMovement, getExerciseType, getAnalyzableExercises, type ExerciseType } from '@/lib/exerciseRules';
 import { exerciseRepConfigs } from '@/lib/repCounter';
+import { AngleProgressIndicator } from '@/components/AngleProgressIndicator';
 
 export default function Analysis() {
   const { exerciseId } = useParams();
@@ -183,20 +184,6 @@ export default function Analysis() {
                     <span className="text-muted-foreground">Phase:</span>
                     <span className="font-medium capitalize">{repState.currentPhase}</span>
                   </div>
-                  {repState.currentAngle !== null && currentConfig && (
-                    <>
-                      <div className="flex justify-between text-sm">
-                        <span className="text-muted-foreground">Current Angle:</span>
-                        <span className="font-medium">{repState.currentAngle}°</span>
-                      </div>
-                      <div className="flex justify-between text-sm">
-                        <span className="text-muted-foreground">Target Range:</span>
-                        <span className="font-medium text-xs">
-                          {currentConfig.bottomAngleRange[0]}° - {currentConfig.topAngleRange[1]}°
-                        </span>
-                      </div>
-                    </>
-                  )}
                 </div>
               </div>
               <Button
@@ -224,6 +211,16 @@ export default function Analysis() {
             </div>
           </CardContent>
         </Card>
+
+        {/* Angle Progress Indicator */}
+        {currentConfig && (
+          <AngleProgressIndicator
+            currentAngle={repState.currentAngle}
+            bottomAngleRange={currentConfig.bottomAngleRange}
+            topAngleRange={currentConfig.topAngleRange}
+            currentPhase={repState.currentPhase}
+          />
+        )}
 
         {/* Camera View */}
         <Card>
