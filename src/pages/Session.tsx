@@ -2,13 +2,14 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useGlobalContext } from '@/context/GlobalContext';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { ArrowLeft, Camera, Check, Clock, Target } from 'lucide-react';
+import { ArrowLeft, Camera, Check, Clock, Dumbbell } from 'lucide-react';
 import { getExerciseType } from '@/lib/exerciseRules';
+import { getExerciseById } from '@/lib/exerciseLibrary';
 
 export default function Session() {
   const { sessionId } = useParams();
   const navigate = useNavigate();
-  const { program, currentWeek } = useGlobalContext();
+  const { program, currentWeek, markSessionComplete, logExercise, exerciseLogs } = useGlobalContext();
 
   const sessionIndex = parseInt(sessionId || '0');
   const currentWeekData = program?.[currentWeek];
@@ -25,12 +26,32 @@ export default function Session() {
     );
   }
 
-  const formatTime = (seconds: number | undefined) => {
-    if (!seconds) return '--';
-    const mins = Math.floor(seconds / 60);
-    const secs = (seconds % 60).toFixed(2);
-    return mins > 0 ? `${mins}:${secs.padStart(5, '0')}` : `${secs}s`;
+  const handleExerciseComplete = (exerciseIndex: number) => {
+    const exercise = session.exercises[exerciseIndex];
+    const key = `${currentWeek}-${sessionIndex}-${exerciseIndex}`;
+    
+    if (!exerciseLogs[key]) {
+      logExercise(key, {
+        sets: exercise.sets,
+        reps: parseInt(exercise.reps) || 10,
+        difficulty: 'moderate',
+        completedAt: Date.now(),
+      });
+    }
   };
+
+  const handleCompleteSession = () => {
+    markSessionComplete(currentWeek, sessionIndex);
+    navigate('/program');
+  };
+
+  const isExerciseComplete = (exerciseIndex: number) => {
+    const key = `${currentWeek}-${sessionIndex}-${exerciseIndex}`;
+    return !!exerciseLogs[key];
+  };
+
+  const completedCount = session.exercises.filter((_, idx) => isExerciseComplete(idx)).length;
+  const isRest = session.type === 'rest';
 
   return (
     <div className="min-h-screen bg-background">
@@ -56,19 +77,26 @@ export default function Session() {
 
       {/* Session Info */}
       <div className="bg-card border-b border-border p-4">
-        <div className="max-w-4xl mx-auto">
-          <p className="text-muted-foreground text-center">{session.details}</p>
+        <div className="max-w-4xl mx-auto flex items-center justify-between">
+          <p className="text-muted-foreground">{session.details}</p>
+          {!isRest && (
+            <span className="text-sm text-muted-foreground">
+              {completedCount}/{session.exercises.length} complete
+            </span>
+          )}
         </div>
       </div>
 
       {/* Exercises */}
       <main className="max-w-4xl mx-auto p-4 space-y-4">
         {session.exercises.map((exercise, idx) => {
+          const exerciseDef = getExerciseById(exercise.exerciseId);
           const exerciseType = getExerciseType(exercise.name);
-          const canAnalyze = !['rest', 'activeRecovery'].includes(exerciseType);
+          const canAnalyze = exerciseDef?.canAnalyze ?? exerciseType !== 'general';
+          const isComplete = isExerciseComplete(idx);
           
           return (
-            <Card key={idx}>
+            <Card key={idx} className={isComplete ? 'opacity-60' : ''}>
               <CardContent className="p-4">
                 <div className="flex items-start justify-between">
                   <div className="flex-1">
@@ -76,28 +104,24 @@ export default function Session() {
                     <p className="text-sm text-muted-foreground mt-1">{exercise.details}</p>
                     
                     <div className="flex flex-wrap gap-3 mt-3">
-                      <div className="flex items-center gap-1 text-sm">
-                        <Clock className="w-4 h-4 text-muted-foreground" />
-                        <span>{exercise.duration}</span>
-                      </div>
-                      
-                      {exercise.targetTime && (
+                      {exercise.sets > 0 && (
                         <div className="flex items-center gap-1 text-sm">
-                          <Target className="w-4 h-4 text-accent" />
-                          <span>Target: {formatTime(exercise.targetTime)}</span>
+                          <Dumbbell className="w-4 h-4 text-muted-foreground" />
+                          <span>{exercise.sets} × {exercise.reps}</span>
                         </div>
                       )}
                       
-                      {exercise.recovery && (
-                        <div className="text-sm text-muted-foreground">
-                          {exercise.recovery}min recovery
+                      {exercise.rest && (
+                        <div className="flex items-center gap-1 text-sm text-muted-foreground">
+                          <Clock className="w-4 h-4" />
+                          <span>{exercise.rest} rest</span>
                         </div>
                       )}
                     </div>
                   </div>
 
                   <div className="flex gap-2 ml-4">
-                    {canAnalyze && (
+                    {canAnalyze && !isRest && (
                       <Button
                         variant="outline"
                         size="sm"
@@ -106,9 +130,15 @@ export default function Session() {
                         <Camera className="w-4 h-4" />
                       </Button>
                     )}
-                    <Button variant="ghost" size="sm">
-                      <Check className="w-4 h-4" />
-                    </Button>
+                    {!isRest && (
+                      <Button 
+                        variant={isComplete ? 'default' : 'ghost'}
+                        size="sm"
+                        onClick={() => handleExerciseComplete(idx)}
+                      >
+                        <Check className="w-4 h-4" />
+                      </Button>
+                    )}
                   </div>
                 </div>
               </CardContent>
@@ -117,10 +147,28 @@ export default function Session() {
         })}
 
         {/* Complete Session Button */}
-        <Button className="w-full h-12" size="lg">
-          <Check className="w-5 h-5 mr-2" />
-          Complete Session
-        </Button>
+        {!isRest && (
+          <Button 
+            className="w-full h-12" 
+            size="lg"
+            onClick={handleCompleteSession}
+            disabled={session.completed}
+          >
+            <Check className="w-5 h-5 mr-2" />
+            {session.completed ? 'Session Completed' : 'Complete Session'}
+          </Button>
+        )}
+
+        {isRest && (
+          <Card className="bg-accent/10">
+            <CardContent className="p-6 text-center">
+              <h3 className="font-semibold text-lg mb-2">Rest Day</h3>
+              <p className="text-muted-foreground">
+                Take today to recover. Focus on sleep, nutrition, and light stretching.
+              </p>
+            </CardContent>
+          </Card>
+        )}
       </main>
     </div>
   );

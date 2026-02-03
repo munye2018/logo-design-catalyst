@@ -1,8 +1,16 @@
 import { useNavigate } from 'react-router-dom';
 import { useGlobalContext } from '@/context/GlobalContext';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { ArrowLeft, ArrowRight, Check } from 'lucide-react';
+
+// Phase labels
+const PHASE_LABELS: Record<string, string> = {
+  foundation: 'Foundation',
+  building: 'Building',
+  peak: 'Peak',
+  deload: 'Deload',
+};
 
 export default function Program() {
   const navigate = useNavigate();
@@ -20,6 +28,7 @@ export default function Program() {
   }
 
   const currentWeekData = program[currentWeek];
+  const phaseLabel = PHASE_LABELS[currentWeekData?.phase] || currentWeekData?.phase;
 
   return (
     <div className="min-h-screen bg-background">
@@ -48,7 +57,7 @@ export default function Program() {
             </Button>
             <div className="text-center">
               <h2 className="text-lg font-semibold">Week {currentWeek + 1}</h2>
-              <p className="text-sm text-muted-foreground capitalize">{currentWeekData?.stage}</p>
+              <p className="text-sm text-muted-foreground capitalize">{phaseLabel}</p>
             </div>
             <Button
               variant="ghost"

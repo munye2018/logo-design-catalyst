@@ -1,23 +1,54 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useGlobalContext } from '@/context/GlobalContext';
+import { useGlobalContext, FitnessGoal, ExperienceLevel, TrainingDays, Equipment } from '@/context/GlobalContext';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Progress } from '@/components/ui/progress';
-import { ArrowLeft, ArrowRight, Activity } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Dumbbell, Target, Calendar, Wrench } from 'lucide-react';
 
-const STEPS = ['sex', 'event', 'time', 'program'] as const;
+const STEPS = ['goal', 'experience', 'frequency', 'equipment'] as const;
 type Step = typeof STEPS[number];
+
+interface OptionCard {
+  value: string;
+  label: string;
+  description: string;
+}
+
+const GOAL_OPTIONS: OptionCard[] = [
+  { value: 'muscle', label: 'Build Muscle', description: 'Focus on hypertrophy and size gains' },
+  { value: 'weight-loss', label: 'Lose Weight', description: 'Burn fat and get lean' },
+  { value: 'strength', label: 'Build Strength', description: 'Increase your lifting numbers' },
+  { value: 'general', label: 'General Fitness', description: 'Balanced health and wellness' },
+];
+
+const EXPERIENCE_OPTIONS: OptionCard[] = [
+  { value: 'beginner', label: 'Beginner', description: '0-1 year of training' },
+  { value: 'intermediate', label: 'Intermediate', description: '1-3 years of training' },
+  { value: 'advanced', label: 'Advanced', description: '3+ years of training' },
+];
+
+const FREQUENCY_OPTIONS: OptionCard[] = [
+  { value: '2', label: '2 Days', description: 'Full body twice per week' },
+  { value: '3', label: '3 Days', description: 'Push/Pull/Legs split' },
+  { value: '4', label: '4 Days', description: 'Upper/Lower split' },
+  { value: '5', label: '5 Days', description: 'Push/Pull/Legs + Upper/Lower' },
+  { value: '6', label: '6 Days', description: 'Push/Pull/Legs twice' },
+];
+
+const EQUIPMENT_OPTIONS: OptionCard[] = [
+  { value: 'full-gym', label: 'Full Gym', description: 'Access to all equipment' },
+  { value: 'home-gym', label: 'Home Gym', description: 'Dumbbells, bench, basic equipment' },
+  { value: 'minimal', label: 'Minimal', description: 'Bodyweight and resistance bands' },
+];
 
 export default function Onboarding() {
   const navigate = useNavigate();
   const { 
-    sex, setSex, 
-    event, setEvent, 
-    bestTime, setBestTime, 
-    programType, setProgramType,
+    fitnessGoal, setFitnessGoal,
+    experienceLevel, setExperienceLevel,
+    trainingDays, setTrainingDays,
+    equipment, setEquipment,
     generateUserProgram,
     setOnboardingComplete
   } = useGlobalContext();
@@ -46,6 +77,35 @@ export default function Onboarding() {
     }
   };
 
+  const getStepIcon = () => {
+    switch (step) {
+      case 'goal':
+        return <Target className="w-10 h-10 mx-auto text-accent mb-2" />;
+      case 'experience':
+        return <Dumbbell className="w-10 h-10 mx-auto text-accent mb-2" />;
+      case 'frequency':
+        return <Calendar className="w-10 h-10 mx-auto text-accent mb-2" />;
+      case 'equipment':
+        return <Wrench className="w-10 h-10 mx-auto text-accent mb-2" />;
+    }
+  };
+
+  const renderOptionCards = (options: OptionCard[], selected: string, onSelect: (value: string) => void) => (
+    <div className="space-y-3">
+      {options.map((option) => (
+        <Button
+          key={option.value}
+          variant={selected === option.value ? 'default' : 'outline'}
+          className="w-full h-auto p-4 flex-col items-start text-left"
+          onClick={() => onSelect(option.value)}
+        >
+          <span className="font-semibold">{option.label}</span>
+          <span className="text-sm opacity-80">{option.description}</span>
+        </Button>
+      ))}
+    </div>
+  );
+
   return (
     <div className="min-h-screen bg-background flex flex-col">
       {/* Header */}
@@ -65,108 +125,66 @@ export default function Onboarding() {
       <main className="flex-1 flex items-center justify-center p-6">
         <Card className="w-full max-w-md">
           <CardHeader className="text-center">
-            <Activity className="w-10 h-10 mx-auto text-accent mb-2" />
-            {step === 'sex' && (
+            {getStepIcon()}
+            {step === 'goal' && (
               <>
-                <CardTitle>What's your sex?</CardTitle>
-                <CardDescription>This helps us calibrate pace targets</CardDescription>
+                <CardTitle>What's your fitness goal?</CardTitle>
+                <CardDescription>This helps us customize your training program</CardDescription>
               </>
             )}
-            {step === 'event' && (
+            {step === 'experience' && (
               <>
-                <CardTitle>Primary Event</CardTitle>
-                <CardDescription>What distance are you training for?</CardDescription>
+                <CardTitle>Experience Level</CardTitle>
+                <CardDescription>How long have you been training?</CardDescription>
               </>
             )}
-            {step === 'time' && (
+            {step === 'frequency' && (
               <>
-                <CardTitle>Season's Best</CardTitle>
-                <CardDescription>Enter your personal best time for {event}m</CardDescription>
+                <CardTitle>Training Frequency</CardTitle>
+                <CardDescription>How many days per week can you train?</CardDescription>
               </>
             )}
-            {step === 'program' && (
+            {step === 'equipment' && (
               <>
-                <CardTitle>Program Type</CardTitle>
-                <CardDescription>How would you like to train?</CardDescription>
+                <CardTitle>Available Equipment</CardTitle>
+                <CardDescription>What equipment do you have access to?</CardDescription>
               </>
             )}
           </CardHeader>
 
           <CardContent className="space-y-6">
-            {step === 'sex' && (
-              <div className="grid grid-cols-2 gap-4">
-                <Button
-                  variant={sex === 'male' ? 'default' : 'outline'}
-                  className="h-24 text-lg"
-                  onClick={() => setSex('male')}
-                >
-                  Male
-                </Button>
-                <Button
-                  variant={sex === 'female' ? 'default' : 'outline'}
-                  className="h-24 text-lg"
-                  onClick={() => setSex('female')}
-                >
-                  Female
-                </Button>
-              </div>
+            {step === 'goal' && renderOptionCards(
+              GOAL_OPTIONS,
+              fitnessGoal,
+              (value) => setFitnessGoal(value as FitnessGoal)
             )}
 
-            {step === 'event' && (
-              <div className="grid grid-cols-2 gap-4">
-                {[100, 200, 400, 800].map((dist) => (
+            {step === 'experience' && renderOptionCards(
+              EXPERIENCE_OPTIONS,
+              experienceLevel,
+              (value) => setExperienceLevel(value as ExperienceLevel)
+            )}
+
+            {step === 'frequency' && (
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                {FREQUENCY_OPTIONS.map((option) => (
                   <Button
-                    key={dist}
-                    variant={event === dist ? 'default' : 'outline'}
-                    className="h-16 text-lg"
-                    onClick={() => setEvent(dist)}
+                    key={option.value}
+                    variant={trainingDays.toString() === option.value ? 'default' : 'outline'}
+                    className="h-auto p-4 flex-col"
+                    onClick={() => setTrainingDays(parseInt(option.value) as TrainingDays)}
                   >
-                    {dist}m
+                    <span className="text-2xl font-bold">{option.value}</span>
+                    <span className="text-xs opacity-80">days/week</span>
                   </Button>
                 ))}
               </div>
             )}
 
-            {step === 'time' && (
-              <div className="space-y-4">
-                <div>
-                  <Label htmlFor="time">Best Time (seconds)</Label>
-                  <Input
-                    id="time"
-                    type="number"
-                    step="0.01"
-                    min="5"
-                    max="180"
-                    value={bestTime}
-                    onChange={(e) => setBestTime(parseFloat(e.target.value) || 11.5)}
-                    className="text-2xl text-center h-16 mt-2"
-                  />
-                </div>
-                <p className="text-sm text-muted-foreground text-center">
-                  Enter your time in seconds (e.g., 11.37 for 100m)
-                </p>
-              </div>
-            )}
-
-            {step === 'program' && (
-              <div className="space-y-4">
-                <Button
-                  variant={programType === 'ongoing' ? 'default' : 'outline'}
-                  className="w-full h-auto p-4 flex-col items-start text-left"
-                  onClick={() => setProgramType('ongoing')}
-                >
-                  <span className="font-semibold">Ongoing Training</span>
-                  <span className="text-sm opacity-80">Continuous 20-week periodized program</span>
-                </Button>
-                <Button
-                  variant={programType === 'peaking' ? 'default' : 'outline'}
-                  className="w-full h-auto p-4 flex-col items-start text-left"
-                  onClick={() => setProgramType('peaking')}
-                >
-                  <span className="font-semibold">Peak for Competition</span>
-                  <span className="text-sm opacity-80">Build towards a specific event date</span>
-                </Button>
-              </div>
+            {step === 'equipment' && renderOptionCards(
+              EQUIPMENT_OPTIONS,
+              equipment,
+              (value) => setEquipment(value as Equipment)
             )}
 
             <Button onClick={handleNext} className="w-full h-12 text-lg">

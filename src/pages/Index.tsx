@@ -4,6 +4,14 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Camera, Calendar, Dumbbell, Activity } from 'lucide-react';
 
+// Phase descriptions
+const PHASE_LABELS: Record<string, string> = {
+  foundation: 'Foundation Phase',
+  building: 'Building Phase',
+  peak: 'Peak Phase',
+  deload: 'Deload Week',
+};
+
 export default function Index() {
   const navigate = useNavigate();
   const { program, onboardingComplete, currentWeek } = useGlobalContext();
@@ -17,7 +25,7 @@ export default function Index() {
             <Activity className="w-16 h-16 mx-auto text-primary" />
             <h1 className="text-4xl font-bold text-foreground">Aurora</h1>
             <p className="text-lg text-muted-foreground">
-              AI-powered movement analysis for athletes. Get real-time feedback on your form to improve performance and prevent injury.
+              AI-powered form coaching for your workouts. Get real-time feedback to improve technique and prevent injury.
             </p>
           </div>
           
@@ -36,15 +44,15 @@ export default function Index() {
           <div className="grid grid-cols-3 gap-4 pt-8">
             <div className="text-center">
               <Camera className="w-8 h-8 mx-auto text-accent mb-2" />
-              <p className="text-xs text-muted-foreground">Real-time Analysis</p>
+              <p className="text-xs text-muted-foreground">Form Analysis</p>
             </div>
             <div className="text-center">
               <Calendar className="w-8 h-8 mx-auto text-accent mb-2" />
-              <p className="text-xs text-muted-foreground">20-Week Program</p>
+              <p className="text-xs text-muted-foreground">8-Week Program</p>
             </div>
             <div className="text-center">
               <Dumbbell className="w-8 h-8 mx-auto text-accent mb-2" />
-              <p className="text-xs text-muted-foreground">Smart Exercises</p>
+              <p className="text-xs text-muted-foreground">50+ Exercises</p>
             </div>
           </div>
         </div>
@@ -56,6 +64,7 @@ export default function Index() {
   const currentWeekData = program[currentWeek];
   const todayIndex = new Date().getDay() === 0 ? 6 : new Date().getDay() - 1;
   const todaySession = currentWeekData?.sessions[todayIndex];
+  const phaseLabel = PHASE_LABELS[currentWeekData?.phase] || currentWeekData?.phase;
 
   return (
     <div className="min-h-screen bg-background">
@@ -75,7 +84,7 @@ export default function Index() {
         {/* Today's Session */}
         <Card>
           <CardHeader>
-            <CardDescription>Week {currentWeek + 1} • {currentWeekData?.stage}</CardDescription>
+            <CardDescription>Week {currentWeek + 1} • {phaseLabel}</CardDescription>
             <CardTitle>Today's Session</CardTitle>
           </CardHeader>
           <CardContent>
@@ -108,7 +117,7 @@ export default function Index() {
           >
             <CardContent className="p-6 text-center">
               <Camera className="w-10 h-10 mx-auto mb-2 text-accent" />
-              <h3 className="font-semibold">Movement Analysis</h3>
+              <h3 className="font-semibold">Form Analysis</h3>
               <p className="text-sm text-muted-foreground">Get real-time form feedback</p>
             </CardContent>
           </Card>
@@ -120,7 +129,7 @@ export default function Index() {
             <CardContent className="p-6 text-center">
               <Calendar className="w-10 h-10 mx-auto mb-2 text-accent" />
               <h3 className="font-semibold">Full Program</h3>
-              <p className="text-sm text-muted-foreground">View your 20-week plan</p>
+              <p className="text-sm text-muted-foreground">View your training plan</p>
             </CardContent>
           </Card>
         </div>

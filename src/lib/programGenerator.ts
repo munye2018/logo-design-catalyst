@@ -1,15 +1,31 @@
+import { 
+  exerciseLibrary, 
+  getAvailableEquipment, 
+  type ExerciseDefinition,
+  type MuscleGroup,
+  type EquipmentType 
+} from './exerciseLibrary';
+
 // Types
+export interface ExerciseLog {
+  sets: number;
+  reps: number;
+  weight?: number;
+  difficulty: 'easy' | 'moderate' | 'hard';
+  completedAt: number;
+}
+
 export interface Exercise {
   id: number;
+  exerciseId: string;
   name: string;
   details: string;
-  duration: string;
-  distance?: number;
-  reps?: number;
-  pace?: number;
-  recovery?: number;
-  targetTime?: number;
-  loggedTime?: number;
+  sets: number;
+  reps: string;
+  weight?: string;
+  rest?: string;
+  completed: boolean;
+  log?: ExerciseLog;
 }
 
 export interface TrainingSession {
@@ -17,6 +33,7 @@ export interface TrainingSession {
   name: string;
   details: string;
   day: string;
+  type: SessionType;
   completed: boolean;
   exercises: Exercise[];
 }
@@ -24,165 +41,250 @@ export interface TrainingSession {
 export interface Week {
   id: number;
   name: string;
-  stage: 'offseason' | 'general' | 'specific' | 'preComp' | 'deload';
+  phase: Phase;
   completed: boolean;
   sessions: TrainingSession[];
 }
 
+export type Phase = 'foundation' | 'building' | 'peak' | 'deload';
+export type SessionType = 
+  | 'push' 
+  | 'pull' 
+  | 'legs' 
+  | 'upper' 
+  | 'lower' 
+  | 'full-body' 
+  | 'chest-triceps'
+  | 'back-biceps'
+  | 'shoulders-arms'
+  | 'rest';
+
+// Program configuration based on user settings
+interface ProgramConfig {
+  fitnessGoal: 'muscle' | 'weight-loss' | 'strength' | 'general';
+  experienceLevel: 'beginner' | 'intermediate' | 'advanced';
+  trainingDays: 2 | 3 | 4 | 5 | 6;
+  equipment: 'full-gym' | 'home-gym' | 'minimal';
+}
+
 // Constants
-const PROGRAM_LENGTH = 20;
+const PROGRAM_LENGTH = 8; // 8-week program
 const DELOAD_FREQUENCY = 4;
 const DAYS_OF_WEEK = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
-// Stage definitions
-type StageName = 'deload' | 'offseason' | 'general' | 'specific' | 'preComp';
+// Training split templates based on training days
+const TRAINING_SPLITS: Record<number, SessionType[]> = {
+  2: ['full-body', 'rest', 'rest', 'full-body', 'rest', 'rest', 'rest'],
+  3: ['push', 'rest', 'pull', 'rest', 'legs', 'rest', 'rest'],
+  4: ['upper', 'lower', 'rest', 'upper', 'lower', 'rest', 'rest'],
+  5: ['push', 'pull', 'legs', 'rest', 'upper', 'lower', 'rest'],
+  6: ['push', 'pull', 'legs', 'push', 'pull', 'legs', 'rest'],
+};
 
-const stages: Record<StageName, {
-  names: string[];
-  details: string[];
-  sessionTypes: string[][];
-}> = {
-  deload: {
-    names: ["Hills", "Active Recovery", "Extensive Tempo", "Core Circuit", "Extensive Tempo", "Hypertrophy", "Rest"],
-    details: ["45 mins", "Aim for 10k steps", "45 mins, track, trainers", "45 mins, repeat 3x", "45 mins, track", "105 mins, gym", "Complete Rest"],
-    sessionTypes: [["warmUp", "acceleration", "warmDown"], ["activeRecovery"], ["warmUp", "extensiveTempo", "warmDown"], ["circuit"], ["warmUp", "extensiveTempo", "warmDown"], ["hypertrophy"], ["rest"]]
-  },
-  offseason: {
-    names: ["Hills", "Active Recovery", "Work Capacity", "Core Circuit", "Extensive Tempo", "Hypertrophy", "Rest"],
-    details: ["45 mins", "Aim for 10k steps", "45 mins, track", "45 mins, repeat 3x", "45 mins, track", "105 mins, gym", "Complete Rest"],
-    sessionTypes: [["warmUp", "acceleration", "warmDown"], ["activeRecovery"], ["warmUp", "intensiveTempo", "warmDown"], ["circuit"], ["warmUp", "extensiveTempo", "warmDown"], ["hypertrophy"], ["rest"]]
-  },
-  general: {
-    names: ["Acceleration", "Active Recovery", "Max Velocity", "Core Circuit", "Extensive Tempo", "Hypertrophy", "Rest"],
-    details: ["45 mins, track, spikes", "Aim for 10k steps", "45 mins, track, spikes", "45 mins, repeat 3x", "45 mins, track", "105 mins, gym", "Complete Rest"],
-    sessionTypes: [["warmUp", "acceleration", "warmDown"], ["activeRecovery"], ["warmUp", "maxVelocity", "warmDown"], ["circuit"], ["warmUp", "extensiveTempo", "warmDown"], ["hypertrophy"], ["rest"]]
-  },
-  specific: {
-    names: ["Acceleration", "Active Recovery", "Max Velocity", "Core Circuit", "Speed Endurance", "Max Strength", "Rest"],
-    details: ["45 mins, track, spikes", "Aim for 10k steps", "45 mins, track, spikes", "45 mins, repeat 3x", "45 mins, track, spikes", "105 mins, gym", "Complete Rest"],
-    sessionTypes: [["warmUp", "acceleration", "warmDown"], ["activeRecovery"], ["warmUp", "maxVelocity", "warmDown"], ["circuit"], ["warmUp", "speedEndurance", "warmDown"], ["maxStrength"], ["rest"]]
-  },
-  preComp: {
-    names: ["Acceleration", "Active Recovery", "Max Velocity", "Core Circuit", "Speed Endurance", "Power", "Rest"],
-    details: ["45 mins, track, spikes", "Aim for 10k steps", "45 mins, track, spikes", "45 mins, repeat 3x", "45 mins, track, spikes", "105 mins, gym", "Complete Rest"],
-    sessionTypes: [["warmUp", "acceleration", "warmDown"], ["activeRecovery"], ["warmUp", "maxVelocity", "warmDown"], ["circuit"], ["warmUp", "speedEndurance", "warmDown"], ["power"], ["rest"]]
+// Session name mapping
+const SESSION_NAMES: Record<SessionType, string> = {
+  'push': 'Push Day',
+  'pull': 'Pull Day',
+  'legs': 'Leg Day',
+  'upper': 'Upper Body',
+  'lower': 'Lower Body',
+  'full-body': 'Full Body',
+  'chest-triceps': 'Chest & Triceps',
+  'back-biceps': 'Back & Biceps',
+  'shoulders-arms': 'Shoulders & Arms',
+  'rest': 'Rest Day',
+};
+
+// Session details mapping
+const SESSION_DETAILS: Record<SessionType, string> = {
+  'push': 'Chest, Shoulders, Triceps',
+  'pull': 'Back, Biceps, Rear Delts',
+  'legs': 'Quads, Hamstrings, Glutes, Calves',
+  'upper': 'All upper body muscles',
+  'lower': 'All lower body muscles',
+  'full-body': 'Complete body workout',
+  'chest-triceps': 'Chest and arm extension',
+  'back-biceps': 'Back and arm flexion',
+  'shoulders-arms': 'Delts, Biceps, Triceps',
+  'rest': 'Recovery and regeneration',
+};
+
+// Muscle groups for each session type
+const SESSION_MUSCLES: Record<SessionType, MuscleGroup[]> = {
+  'push': ['chest', 'shoulders', 'triceps'],
+  'pull': ['back', 'biceps'],
+  'legs': ['quadriceps', 'hamstrings', 'glutes', 'calves'],
+  'upper': ['chest', 'back', 'shoulders', 'biceps', 'triceps'],
+  'lower': ['quadriceps', 'hamstrings', 'glutes', 'calves'],
+  'full-body': ['chest', 'back', 'shoulders', 'quadriceps', 'hamstrings', 'core'],
+  'chest-triceps': ['chest', 'triceps'],
+  'back-biceps': ['back', 'biceps'],
+  'shoulders-arms': ['shoulders', 'biceps', 'triceps'],
+  'rest': [],
+};
+
+// Get sets/reps based on goal
+function getSetsRepsForGoal(goal: ProgramConfig['fitnessGoal'], exercise: ExerciseDefinition): { sets: number; reps: string } {
+  switch (goal) {
+    case 'strength':
+      return { sets: 5, reps: '3-5' };
+    case 'muscle':
+      return { sets: 4, reps: '8-12' };
+    case 'weight-loss':
+      return { sets: 3, reps: '12-15' };
+    case 'general':
+    default:
+      return { sets: exercise.defaultSets, reps: exercise.defaultReps };
   }
-};
-
-// Exercise templates
-type ExerciseKey = 'acceleration' | 'maxVelocity' | 'speedEndurance' | 'intensiveTempo' | 'extensiveTempo' | 
-                   'warmUp' | 'warmDown' | 'circuit' | 'hypertrophy' | 'maxStrength' | 'power' | 'activeRecovery' | 'rest';
-
-const exerciseTemplates: Record<ExerciseKey, Exercise[]> = {
-  acceleration: [
-    { id: 1, name: "Sprint Starts", details: "Block starts or 3-point stance", duration: "10x30m", distance: 30, reps: 10, pace: 0.95, recovery: 3 },
-    { id: 2, name: "Acceleration Runs", details: "Focus on drive phase", duration: "8x40m", distance: 40, reps: 8, pace: 0.98, recovery: 4 },
-  ],
-  maxVelocity: [
-    { id: 1, name: "Flying Sprints", details: "30m build-up, 30m max", duration: "6x60m", distance: 60, reps: 6, pace: 1.0, recovery: 6 },
-    { id: 2, name: "In-and-Outs", details: "Alternate speed zones", duration: "4x80m", distance: 80, reps: 4, pace: 0.95, recovery: 8 },
-  ],
-  speedEndurance: [
-    { id: 1, name: "Speed Endurance", details: "Near-max effort", duration: "4x120m", distance: 120, reps: 4, pace: 0.92, recovery: 10 },
-    { id: 2, name: "Race Pace", details: "Event-specific work", duration: "3x150m", distance: 150, reps: 3, pace: 0.90, recovery: 12 },
-  ],
-  intensiveTempo: [
-    { id: 1, name: "Intensive Tempo", details: "Moderate-high intensity", duration: "6x200m", distance: 200, reps: 6, pace: 0.80, recovery: 3 },
-  ],
-  extensiveTempo: [
-    { id: 1, name: "Extensive Tempo", details: "Aerobic development", duration: "10x100m", distance: 100, reps: 10, pace: 0.70, recovery: 1 },
-    { id: 2, name: "Tempo Runs", details: "Continuous effort", duration: "6x200m", distance: 200, reps: 6, pace: 0.65, recovery: 2 },
-  ],
-  warmUp: [
-    { id: 0, name: "Warm Up", details: "Dynamic stretching, A-skips, B-skips, strides", duration: "15 min" },
-  ],
-  warmDown: [
-    { id: 99, name: "Cool Down", details: "Light jog, static stretching", duration: "10 min" },
-  ],
-  circuit: [
-    { id: 1, name: "Russian Twists", details: "3-5kg medicine ball", duration: "3x20" },
-    { id: 2, name: "Box Jumps", details: "40cm box", duration: "3x8" },
-    { id: 3, name: "Push-ups", details: "Explosive", duration: "3x15" },
-    { id: 4, name: "Plank", details: "Core stability", duration: "3x45s" },
-    { id: 5, name: "Lunges", details: "Walking lunges", duration: "3x12 each" },
-    { id: 6, name: "Calf Raises", details: "Single leg on step", duration: "3x15 each" },
-  ],
-  hypertrophy: [
-    { id: 1, name: "Back Squats", details: "70% 1RM", duration: "4x8" },
-    { id: 2, name: "Romanian Deadlifts", details: "Focus on hamstrings", duration: "4x10" },
-    { id: 3, name: "Split Squats", details: "Dumbbells", duration: "3x10 each" },
-    { id: 4, name: "Leg Curls", details: "Machine", duration: "3x12" },
-    { id: 5, name: "Bench Press", details: "DB or barbell", duration: "4x8" },
-    { id: 6, name: "Pull-ups", details: "Weighted if possible", duration: "3xMax" },
-  ],
-  maxStrength: [
-    { id: 1, name: "Back Squats", details: "85% 1RM", duration: "5x3" },
-    { id: 2, name: "Power Cleans", details: "80% 1RM", duration: "5x3" },
-    { id: 3, name: "Romanian Deadlifts", details: "75% 1RM", duration: "4x5" },
-    { id: 4, name: "Bench Press", details: "85% 1RM", duration: "5x3" },
-  ],
-  power: [
-    { id: 1, name: "Jump Squats", details: "30% 1RM", duration: "5x5" },
-    { id: 2, name: "Power Cleans", details: "70% 1RM, explosive", duration: "5x3" },
-    { id: 3, name: "Box Jumps", details: "Max height", duration: "4x5" },
-    { id: 4, name: "Medicine Ball Throws", details: "Overhead, chest pass", duration: "3x10" },
-  ],
-  activeRecovery: [
-    { id: 1, name: "Active Recovery", details: "Light walking, cycling, or swimming", duration: "30-45 min" },
-  ],
-  rest: [
-    { id: 1, name: "Complete Rest", details: "Sleep, nutrition, hydration focus", duration: "Full day" },
-  ],
-};
-
-// Calculate target time based on user's best time
-function calculateTargetTime(bestTime: number, distance: number, event: number, pace: number): number {
-  // Estimate velocity from best time
-  const velocity = event / bestTime; // m/s
-  const baseTime = distance / velocity;
-  return Math.round(baseTime / pace * 100) / 100;
 }
 
-// Get stage based on week number
-function getStage(weekNumber: number): StageName {
+// Get rest time based on goal
+function getRestTime(goal: ProgramConfig['fitnessGoal']): string {
+  switch (goal) {
+    case 'strength':
+      return '3-5 min';
+    case 'muscle':
+      return '60-90 sec';
+    case 'weight-loss':
+      return '30-45 sec';
+    case 'general':
+    default:
+      return '60-90 sec';
+  }
+}
+
+// Get exercises for a session type
+function getExercisesForSession(
+  sessionType: SessionType,
+  config: ProgramConfig,
+  availableEquipment: EquipmentType[]
+): Exercise[] {
+  if (sessionType === 'rest') {
+    return [{
+      id: 0,
+      exerciseId: 'rest',
+      name: 'Rest Day',
+      details: 'Focus on recovery, stretching, and nutrition',
+      sets: 0,
+      reps: '-',
+      completed: false,
+    }];
+  }
+
+  const targetMuscles = SESSION_MUSCLES[sessionType];
+  const exercises: Exercise[] = [];
+  let id = 0;
+
+  // Filter exercises by equipment and difficulty
+  const availableExercises = exerciseLibrary.filter(ex => {
+    const hasEquipment = ex.equipment.some(e => availableEquipment.includes(e));
+    const matchesDifficulty = 
+      config.experienceLevel === 'advanced' || 
+      ex.difficulty !== 'advanced' ||
+      (config.experienceLevel === 'intermediate' && ex.difficulty !== 'advanced');
+    return hasEquipment && matchesDifficulty;
+  });
+
+  // Select exercises for each target muscle
+  targetMuscles.forEach(muscle => {
+    const muscleExercises = availableExercises.filter(ex => ex.primaryMuscle === muscle);
+    
+    // Take 1-2 exercises per muscle group depending on session type
+    const numExercises = sessionType === 'full-body' ? 1 : 2;
+    const selected = muscleExercises.slice(0, numExercises);
+    
+    selected.forEach(ex => {
+      const { sets, reps } = getSetsRepsForGoal(config.fitnessGoal, ex);
+      exercises.push({
+        id: id++,
+        exerciseId: ex.id,
+        name: ex.name,
+        details: ex.description,
+        sets,
+        reps,
+        rest: getRestTime(config.fitnessGoal),
+        completed: false,
+      });
+    });
+  });
+
+  // Add core work for non-leg days
+  if (!['legs', 'lower'].includes(sessionType) && exercises.length < 8) {
+    const coreExercises = availableExercises.filter(ex => ex.primaryMuscle === 'core');
+    if (coreExercises.length > 0) {
+      const coreEx = coreExercises[0];
+      const { sets, reps } = getSetsRepsForGoal(config.fitnessGoal, coreEx);
+      exercises.push({
+        id: id++,
+        exerciseId: coreEx.id,
+        name: coreEx.name,
+        details: coreEx.description,
+        sets,
+        reps,
+        rest: getRestTime(config.fitnessGoal),
+        completed: false,
+      });
+    }
+  }
+
+  return exercises;
+}
+
+// Get phase based on week number
+function getPhase(weekNumber: number): Phase {
   if ((weekNumber + 1) % DELOAD_FREQUENCY === 0) return 'deload';
-  if (weekNumber < 4) return 'offseason';
-  if (weekNumber < 8) return 'general';
-  if (weekNumber < 16) return 'specific';
-  return 'preComp';
+  if (weekNumber < 2) return 'foundation';
+  if (weekNumber < 6) return 'building';
+  return 'peak';
+}
+
+// Get phase description
+function getPhaseDescription(phase: Phase): string {
+  switch (phase) {
+    case 'foundation':
+      return 'Building base strength and movement patterns';
+    case 'building':
+      return 'Progressive overload and volume increase';
+    case 'peak':
+      return 'Intensity focus and performance optimization';
+    case 'deload':
+      return 'Recovery week - reduced volume';
+  }
 }
 
 // Generate program
-export function generateProgram(bestTime: number, event: number = 100): Week[] {
+export function generateProgram(config: ProgramConfig): Week[] {
   const program: Week[] = [];
+  const split = TRAINING_SPLITS[config.trainingDays];
+  const availableEquipment = getAvailableEquipment(config.equipment);
 
   for (let weekIdx = 0; weekIdx < PROGRAM_LENGTH; weekIdx++) {
-    const stage = getStage(weekIdx);
-    const stageConfig = stages[stage];
+    const phase = getPhase(weekIdx);
     const sessions: TrainingSession[] = [];
 
     for (let dayIdx = 0; dayIdx < 7; dayIdx++) {
-      const sessionTypes = stageConfig.sessionTypes[dayIdx];
-      const exercises: Exercise[] = [];
-
-      sessionTypes.forEach((type) => {
-        const template = exerciseTemplates[type as ExerciseKey];
-        if (template) {
-          template.forEach((ex, idx) => {
-            const exercise: Exercise = { ...ex, id: exercises.length + idx };
-            if (ex.distance && ex.pace) {
-              exercise.targetTime = calculateTargetTime(bestTime, ex.distance, event, ex.pace);
-            }
-            exercises.push(exercise);
-          });
-        }
-      });
+      const sessionType = split[dayIdx];
+      const isDeload = phase === 'deload';
+      
+      let exercises = getExercisesForSession(sessionType, config, availableEquipment);
+      
+      // Reduce volume for deload weeks
+      if (isDeload && sessionType !== 'rest') {
+        exercises = exercises.slice(0, Math.ceil(exercises.length * 0.6));
+        exercises = exercises.map(ex => ({
+          ...ex,
+          sets: Math.max(2, ex.sets - 1),
+        }));
+      }
 
       sessions.push({
         id: dayIdx,
-        name: stageConfig.names[dayIdx],
-        details: stageConfig.details[dayIdx],
+        name: SESSION_NAMES[sessionType],
+        details: isDeload && sessionType !== 'rest' 
+          ? `${SESSION_DETAILS[sessionType]} (Light)` 
+          : SESSION_DETAILS[sessionType],
         day: DAYS_OF_WEEK[dayIdx],
+        type: sessionType,
         completed: false,
         exercises,
       });
@@ -191,7 +293,7 @@ export function generateProgram(bestTime: number, event: number = 100): Week[] {
     program.push({
       id: weekIdx,
       name: `Week ${weekIdx + 1}`,
-      stage,
+      phase,
       completed: false,
       sessions,
     });
