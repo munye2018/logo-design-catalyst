@@ -3,6 +3,11 @@ import type Webcam from 'react-webcam';
 import { PoseKeypoint } from '@/context/GlobalContext';
 import { repCounter, RepCounterState } from '@/lib/repCounter';
 import type { ExerciseType } from '@/lib/exerciseRules';
+import { createLogger } from '@/lib/logger';
+
+// Development-only logger for pose detection
+const logger = createLogger('PoseDetection');
+
 // Dynamic imports to avoid build-time resolution issues
 let tf: typeof import('@tensorflow/tfjs') | null = null;
 let poseDetection: typeof import('@tensorflow-models/pose-detection') | null = null;
@@ -85,17 +90,17 @@ export function usePoseDetection({
       setIsLoading(true);
       setError(null);
 
-      console.log('[PoseDetection] Starting initialization...');
+      logger.log('Starting initialization...');
 
       // Dynamic import to avoid build-time issues
       if (!tf) {
-        console.log('[PoseDetection] Loading TensorFlow.js...');
+        logger.log('Loading TensorFlow.js...');
         tf = await import('@tensorflow/tfjs');
       }
 
       // Initialize TensorFlow.js
       await tf.ready();
-      console.log('[PoseDetection] TensorFlow.js ready');
+      logger.log('TensorFlow.js ready');
 
       // Try backends in order of preference
       const backends = ['webgl', 'cpu'];
@@ -103,14 +108,14 @@ export function usePoseDetection({
 
       for (const backend of backends) {
         try {
-          console.log(`[PoseDetection] Trying ${backend} backend...`);
+          logger.log(`Trying ${backend} backend...`);
           await tf.setBackend(backend);
           await tf.ready();
-          console.log(`[PoseDetection] Using ${backend} backend`);
+          logger.log(`Using ${backend} backend`);
           backendInitialized = true;
           break;
         } catch (backendError) {
-          console.warn(`[PoseDetection] ${backend} backend failed:`, backendError);
+          logger.warn(`${backend} backend failed:`, backendError);
         }
       }
 
@@ -120,12 +125,12 @@ export function usePoseDetection({
 
       // Load pose detection model
       if (!poseDetection) {
-        console.log('[PoseDetection] Loading pose detection model...');
+        logger.log('Loading pose detection model...');
         poseDetection = await import('@tensorflow-models/pose-detection');
       }
 
       // Create MoveNet detector (Lightning is faster)
-      console.log('[PoseDetection] Creating MoveNet detector...');
+      logger.log('Creating MoveNet detector...');
       const detector = await poseDetection.createDetector(
         poseDetection.SupportedModels.MoveNet,
         {
@@ -135,10 +140,10 @@ export function usePoseDetection({
       );
 
       detectorRef.current = detector;
-      console.log('[PoseDetection] Detector initialized successfully');
+      logger.log('Detector initialized successfully');
       setIsLoading(false);
     } catch (err) {
-      console.error('[PoseDetection] Initialization failed:', err);
+      logger.logError('Failed to initialize AI model', err);
       const errorMessage = err instanceof Error ? err.message : 'Unknown error';
       setError(`Failed to initialize AI model: ${errorMessage}. Please refresh and try again.`);
       setIsLoading(false);
@@ -263,7 +268,7 @@ export function usePoseDetection({
         setKeypoints(null);
       }
     } catch (err) {
-      console.error('[PoseDetection] Detection error:', err);
+      logger.error('Detection error:', err);
     }
 
     animationFrameRef.current = requestAnimationFrame(detectPose);
