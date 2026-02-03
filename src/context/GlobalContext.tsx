@@ -1,5 +1,15 @@
 import { createContext, PropsWithChildren, useContext, useState, useCallback, useEffect } from 'react';
 import { generateProgram, type Week, type TrainingSession, type Exercise, type ExerciseLog } from '@/lib/programGenerator';
+import { 
+  safeGetItem, 
+  safeSetItem, 
+  safeRemoveItem, 
+  isValidProfile, 
+  isValidWorkoutHistory,
+  isObject,
+  isArray,
+  trimWorkoutHistory 
+} from '@/lib/storage';
 
 export interface PoseKeypoint {
   x: number;
@@ -106,76 +116,80 @@ const STORAGE_KEYS = {
 };
 
 export const GlobalProvider = ({ children }: PropsWithChildren) => {
-  // User profile state - gym focused
+  // Load profile once and extract all values
+  const savedProfile = safeGetItem(STORAGE_KEYS.profile, {}, isValidProfile);
+  
+  // User profile state - gym focused with safe localStorage parsing
   const [fitnessGoal, setFitnessGoal] = useState<FitnessGoal>(() => {
-    const saved = localStorage.getItem(STORAGE_KEYS.profile);
-    if (saved) {
-      const parsed = JSON.parse(saved);
-      return parsed.fitnessGoal || 'general';
+    const value = savedProfile.fitnessGoal;
+    if (value && ['muscle', 'weight-loss', 'strength', 'general'].includes(value)) {
+      return value as FitnessGoal;
     }
     return 'general';
   });
   
   const [experienceLevel, setExperienceLevel] = useState<ExperienceLevel>(() => {
-    const saved = localStorage.getItem(STORAGE_KEYS.profile);
-    if (saved) {
-      const parsed = JSON.parse(saved);
-      return parsed.experienceLevel || 'beginner';
+    const value = savedProfile.experienceLevel;
+    if (value && ['beginner', 'intermediate', 'advanced'].includes(value)) {
+      return value as ExperienceLevel;
     }
     return 'beginner';
   });
   
   const [trainingDays, setTrainingDays] = useState<TrainingDays>(() => {
-    const saved = localStorage.getItem(STORAGE_KEYS.profile);
-    if (saved) {
-      const parsed = JSON.parse(saved);
-      return parsed.trainingDays || 3;
+    const value = savedProfile.trainingDays;
+    if (typeof value === 'number' && [2, 3, 4, 5, 6].includes(value)) {
+      return value as TrainingDays;
     }
     return 3;
   });
   
   const [equipment, setEquipment] = useState<Equipment>(() => {
-    const saved = localStorage.getItem(STORAGE_KEYS.profile);
-    if (saved) {
-      const parsed = JSON.parse(saved);
-      return parsed.equipment || 'full-gym';
+    const value = savedProfile.equipment;
+    if (value && ['full-gym', 'home-gym', 'minimal'].includes(value)) {
+      return value as Equipment;
     }
     return 'full-gym';
   });
   
-  // Program state
+  // Program state with safe parsing
   const [program, setProgram] = useState<Week[] | null>(() => {
-    const saved = localStorage.getItem(STORAGE_KEYS.program);
-    return saved ? JSON.parse(saved) : null;
+    return safeGetItem<Week[] | null>(STORAGE_KEYS.program, null, (v): v is Week[] | null => 
+      v === null || isArray(v)
+    );
   });
   
   const [currentWeek, setCurrentWeek] = useState<number>(() => {
-    const saved = localStorage.getItem(STORAGE_KEYS.currentWeek);
-    return saved ? parseInt(saved) : 0;
+    const saved = safeGetItem(STORAGE_KEYS.currentWeek, '0');
+    const parsed = parseInt(String(saved), 10);
+    return isNaN(parsed) ? 0 : parsed;
   });
   
   const [currentSession, setCurrentSession] = useState<number>(0);
   
   const [onboardingComplete, setOnboardingComplete] = useState<boolean>(() => {
-    const saved = localStorage.getItem(STORAGE_KEYS.onboardingComplete);
-    return saved === 'true';
+    const saved = safeGetItem<string | boolean>(STORAGE_KEYS.onboardingComplete, false);
+    return saved === 'true' || saved === true;
   });
   
-  // Progress tracking
+  // Progress tracking with safe parsing (no strict validator - accept any object structure)
   const [completedSessions, setCompletedSessions] = useState<Record<string, boolean>>(() => {
-    const saved = localStorage.getItem(STORAGE_KEYS.completedSessions);
-    return saved ? JSON.parse(saved) : {};
+    return safeGetItem<Record<string, boolean>>(STORAGE_KEYS.completedSessions, {});
   });
   
   const [exerciseLogs, setExerciseLogs] = useState<Record<string, ExerciseLog>>(() => {
-    const saved = localStorage.getItem(STORAGE_KEYS.exerciseLogs);
-    return saved ? JSON.parse(saved) : {};
+    return safeGetItem<Record<string, ExerciseLog>>(STORAGE_KEYS.exerciseLogs, {});
   });
   
-  // Workout history state
+  // Workout history state with safe parsing and size limit
   const [workoutHistory, setWorkoutHistory] = useState<WorkoutHistoryEntry[]>(() => {
-    const saved = localStorage.getItem(STORAGE_KEYS.workoutHistory);
-    return saved ? JSON.parse(saved) : [];
+    const history = safeGetItem<WorkoutHistoryEntry[]>(
+      STORAGE_KEYS.workoutHistory, 
+      [], 
+      isValidWorkoutHistory
+    );
+    // Trim to max entries on load
+    return trimWorkoutHistory(history);
   });
   
   // Analysis state
@@ -183,46 +197,47 @@ export const GlobalProvider = ({ children }: PropsWithChildren) => {
   const [currentPose, setCurrentPose] = useState<PoseKeypoint[] | null>(null);
   const [feedbackHistory, setFeedbackHistory] = useState<AnalysisFeedback[]>([]);
 
-  // Persist profile changes
+  // Persist profile changes with safe storage
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.profile, JSON.stringify({
+    safeSetItem(STORAGE_KEYS.profile, {
       fitnessGoal,
       experienceLevel,
       trainingDays,
       equipment,
-    }));
+    });
   }, [fitnessGoal, experienceLevel, trainingDays, equipment]);
 
-  // Persist program
+  // Persist program with safe storage
   useEffect(() => {
     if (program) {
-      localStorage.setItem(STORAGE_KEYS.program, JSON.stringify(program));
+      safeSetItem(STORAGE_KEYS.program, program);
     }
   }, [program]);
 
-  // Persist current week
+  // Persist current week with safe storage
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.currentWeek, currentWeek.toString());
+    safeSetItem(STORAGE_KEYS.currentWeek, currentWeek.toString());
   }, [currentWeek]);
 
-  // Persist onboarding
+  // Persist onboarding with safe storage
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.onboardingComplete, onboardingComplete.toString());
+    safeSetItem(STORAGE_KEYS.onboardingComplete, onboardingComplete.toString());
   }, [onboardingComplete]);
 
-  // Persist completed sessions
+  // Persist completed sessions with safe storage
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.completedSessions, JSON.stringify(completedSessions));
+    safeSetItem(STORAGE_KEYS.completedSessions, completedSessions);
   }, [completedSessions]);
 
-  // Persist exercise logs
+  // Persist exercise logs with safe storage
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.exerciseLogs, JSON.stringify(exerciseLogs));
+    safeSetItem(STORAGE_KEYS.exerciseLogs, exerciseLogs);
   }, [exerciseLogs]);
 
-  // Persist workout history
+  // Persist workout history with safe storage and size limit
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.workoutHistory, JSON.stringify(workoutHistory));
+    const trimmed = trimWorkoutHistory(workoutHistory);
+    safeSetItem(STORAGE_KEYS.workoutHistory, trimmed);
   }, [workoutHistory]);
 
   const markSessionComplete = useCallback((weekId: number, sessionId: number) => {
@@ -325,8 +340,8 @@ export const GlobalProvider = ({ children }: PropsWithChildren) => {
     setCompletedSessions({});
     setExerciseLogs({});
     setCurrentWeek(0);
-    localStorage.removeItem(STORAGE_KEYS.completedSessions);
-    localStorage.removeItem(STORAGE_KEYS.exerciseLogs);
+    safeRemoveItem(STORAGE_KEYS.completedSessions);
+    safeRemoveItem(STORAGE_KEYS.exerciseLogs);
   }, []);
 
   return (
