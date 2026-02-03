@@ -1,10 +1,12 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useGlobalContext, FitnessGoal, ExperienceLevel, TrainingDays, Equipment } from '@/context/GlobalContext';
+import { useAuth } from '@/contexts/AuthContext';
+import { syncUserProfile, syncProgram } from '@/lib/syncService';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
-import { ArrowLeft, ArrowRight, Dumbbell, Target, Calendar, Wrench } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Dumbbell, Target, Calendar, Wrench, Cloud } from 'lucide-react';
 
 const STEPS = ['goal', 'experience', 'frequency', 'equipment'] as const;
 type Step = typeof STEPS[number];
@@ -44,30 +46,55 @@ const EQUIPMENT_OPTIONS: OptionCard[] = [
 
 export default function Onboarding() {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const { 
     fitnessGoal, setFitnessGoal,
     experienceLevel, setExperienceLevel,
     trainingDays, setTrainingDays,
     equipment, setEquipment,
     generateUserProgram,
-    setOnboardingComplete
+    setOnboardingComplete,
+    program,
+    currentWeek,
+    completedSessions
   } = useGlobalContext();
   
   const [currentStep, setCurrentStep] = useState<number>(0);
+  const [isSyncing, setIsSyncing] = useState(false);
   const step = STEPS[currentStep];
 
   const progress = ((currentStep + 1) / STEPS.length) * 100;
 
-  const handleNext = () => {
+  const handleNext = async () => {
     if (currentStep < STEPS.length - 1) {
       setCurrentStep(prev => prev + 1);
     } else {
       // Complete onboarding
       generateUserProgram();
       setOnboardingComplete(true);
+      
+      // Sync to cloud if user is logged in
+      if (user) {
+        setIsSyncing(true);
+        await syncUserProfile(user.id, {
+          fitnessGoal,
+          experienceLevel,
+          trainingDays,
+          equipment
+        });
+        setIsSyncing(false);
+      }
+      
       navigate('/');
     }
   };
+
+  // Sync program after it's generated
+  useEffect(() => {
+    if (user && program) {
+      syncProgram(user.id, program, currentWeek, completedSessions);
+    }
+  }, [user, program, currentWeek, completedSessions]);
 
   const handleBack = () => {
     if (currentStep > 0) {
@@ -187,10 +214,27 @@ export default function Onboarding() {
               (value) => setEquipment(value as Equipment)
             )}
 
-            <Button onClick={handleNext} className="w-full h-12 text-lg">
-              {currentStep === STEPS.length - 1 ? 'Create Program' : 'Continue'}
-              <ArrowRight className="w-5 h-5 ml-2" />
+            <Button onClick={handleNext} className="w-full h-12 text-lg" disabled={isSyncing}>
+              {isSyncing ? (
+                <>
+                  <Cloud className="w-5 h-5 mr-2 animate-pulse" />
+                  Syncing...
+                </>
+              ) : currentStep === STEPS.length - 1 ? (
+                'Create Program'
+              ) : (
+                'Continue'
+              )}
+              {!isSyncing && <ArrowRight className="w-5 h-5 ml-2" />}
             </Button>
+
+            {/* Cloud sync note */}
+            {user && currentStep === STEPS.length - 1 && (
+              <p className="text-xs text-center text-muted-foreground flex items-center justify-center gap-1">
+                <Cloud className="w-3 h-3" />
+                Your data will sync to the cloud
+              </p>
+            )}
           </CardContent>
         </Card>
       </main>

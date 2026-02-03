@@ -57,7 +57,19 @@ export function createLogger(namespace: string) {
     log: (...args: unknown[]) => devLog(`[${namespace}]`, ...args),
     warn: (...args: unknown[]) => devWarn(`[${namespace}]`, ...args),
     error: (...args: unknown[]) => devError(`[${namespace}]`, ...args),
+    debug: (...args: unknown[]) => devLog(`[${namespace}]`, ...args),
     logError: (userMessage: string, error?: unknown) => 
       logError(`[${namespace}] ${userMessage}`, error),
   };
 }
+
+/**
+ * Default logger instance for general use
+ */
+export const logger = {
+  log: devLog,
+  warn: devWarn,
+  error: devError,
+  debug: devLog,
+  logError,
+};
