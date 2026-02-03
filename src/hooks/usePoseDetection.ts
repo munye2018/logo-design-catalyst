@@ -1,8 +1,10 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import * as tf from '@tensorflow/tfjs';
-import * as poseDetection from '@tensorflow-models/pose-detection';
 import type Webcam from 'react-webcam';
 import { PoseKeypoint } from '@/context/GlobalContext';
+
+// Dynamic imports to avoid build-time resolution issues
+let tf: typeof import('@tensorflow/tfjs') | null = null;
+let poseDetection: typeof import('@tensorflow-models/pose-detection') | null = null;
 
 interface UsePoseDetectionProps {
   webcamRef: React.RefObject<Webcam | null>;
@@ -47,7 +49,7 @@ export function usePoseDetection({
   const [keypoints, setKeypoints] = useState<PoseKeypoint[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const detectorRef = useRef<poseDetection.PoseDetector | null>(null);
+  const detectorRef = useRef<any>(null);
   const animationFrameRef = useRef<number | null>(null);
 
   // Initialize TensorFlow and detector
@@ -55,6 +57,14 @@ export function usePoseDetection({
     try {
       setIsLoading(true);
       setError(null);
+
+      // Dynamic import to avoid build-time issues
+      if (!tf) {
+        tf = await import('@tensorflow/tfjs');
+      }
+      if (!poseDetection) {
+        poseDetection = await import('@tensorflow-models/pose-detection');
+      }
 
       // Initialize TensorFlow.js
       await tf.ready();
@@ -82,7 +92,7 @@ export function usePoseDetection({
 
   // Draw skeleton on canvas
   const drawSkeleton = useCallback(
-    (poses: poseDetection.Pose[], ctx: CanvasRenderingContext2D) => {
+    (poses: any[], ctx: CanvasRenderingContext2D) => {
       const canvas = canvasRef.current;
       if (!canvas) return;
 
@@ -92,8 +102,8 @@ export function usePoseDetection({
         const kpts = pose.keypoints;
 
         // Create a map for easy lookup
-        const keypointMap: Record<string, poseDetection.Keypoint> = {};
-        kpts.forEach((kp) => {
+        const keypointMap: Record<string, { x: number; y: number; score?: number; name?: string }> = {};
+        kpts.forEach((kp: { x: number; y: number; score?: number; name?: string }) => {
           if (kp.name) {
             keypointMap[kp.name] = kp;
           }
@@ -148,7 +158,7 @@ export function usePoseDetection({
         setIsDetecting(true);
 
         // Convert to our keypoint format
-        const convertedKeypoints: PoseKeypoint[] = poses[0].keypoints.map((kp) => ({
+        const convertedKeypoints: PoseKeypoint[] = poses[0].keypoints.map((kp: { x: number; y: number; score?: number; name?: string }) => ({
           x: kp.x,
           y: kp.y,
           score: kp.score || 0,
