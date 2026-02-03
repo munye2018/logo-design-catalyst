@@ -6,7 +6,7 @@ import { usePoseDetection } from '@/hooks/usePoseDetection';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ArrowLeft, Camera, CameraOff, AlertCircle, CheckCircle, Info } from 'lucide-react';
-import { analyzeMovement, getExerciseType, type ExerciseType } from '@/lib/exerciseRules';
+import { analyzeMovement, getExerciseType, getAnalyzableExercises, type ExerciseType } from '@/lib/exerciseRules';
 
 export default function Analysis() {
   const { exerciseId } = useParams();
@@ -74,15 +74,8 @@ export default function Analysis() {
     }
   };
 
-  const exerciseOptions: { value: ExerciseType; label: string }[] = [
-    { value: 'squat', label: 'Squat' },
-    { value: 'lunge', label: 'Lunge' },
-    { value: 'box-jump', label: 'Box Jump' },
-    { value: 'a-skip', label: 'A-Skip' },
-    { value: 'b-skip', label: 'B-Skip' },
-    { value: 'calf-raise', label: 'Calf Raise' },
-    { value: 'running', label: 'Running Form' },
-  ];
+  // Get analyzable exercises from the rules library
+  const exerciseOptions = getAnalyzableExercises();
 
   return (
     <div className="min-h-screen bg-background">
@@ -92,7 +85,7 @@ export default function Analysis() {
           <Button variant="ghost" size="icon" onClick={() => navigate(-1)}>
             <ArrowLeft className="w-5 h-5" />
           </Button>
-          <h1 className="text-xl font-bold">Movement Analysis</h1>
+          <h1 className="text-xl font-bold">Form Analysis</h1>
           <div className="w-10" />
         </div>
       </header>
