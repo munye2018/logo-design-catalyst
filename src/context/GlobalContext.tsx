@@ -11,6 +11,9 @@ import {
   trimWorkoutHistory 
 } from '@/lib/storage';
 
+// Re-export Week as WeeklyProgram for syncService compatibility
+export type WeeklyProgram = Week;
+
 export interface PoseKeypoint {
   x: number;
   y: number;

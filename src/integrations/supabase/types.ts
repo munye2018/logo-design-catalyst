@@ -14,7 +14,102 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      user_profiles: {
+        Row: {
+          created_at: string
+          equipment: string
+          experience_level: string
+          fitness_goal: string
+          id: string
+          training_days: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          equipment?: string
+          experience_level?: string
+          fitness_goal?: string
+          id?: string
+          training_days?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          equipment?: string
+          experience_level?: string
+          fitness_goal?: string
+          id?: string
+          training_days?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      user_programs: {
+        Row: {
+          completed_sessions: Json
+          created_at: string
+          current_week: number
+          id: string
+          program_data: Json
+          user_id: string
+        }
+        Insert: {
+          completed_sessions?: Json
+          created_at?: string
+          current_week?: number
+          id?: string
+          program_data?: Json
+          user_id: string
+        }
+        Update: {
+          completed_sessions?: Json
+          created_at?: string
+          current_week?: number
+          id?: string
+          program_data?: Json
+          user_id?: string
+        }
+        Relationships: []
+      }
+      workout_history: {
+        Row: {
+          completed_at: string
+          duration: number | null
+          exercises: Json
+          id: string
+          session_name: string
+          session_type: string | null
+          total_volume: number
+          user_id: string
+          week_number: number
+        }
+        Insert: {
+          completed_at?: string
+          duration?: number | null
+          exercises?: Json
+          id?: string
+          session_name: string
+          session_type?: string | null
+          total_volume?: number
+          user_id: string
+          week_number?: number
+        }
+        Update: {
+          completed_at?: string
+          duration?: number | null
+          exercises?: Json
+          id?: string
+          session_name?: string
+          session_type?: string | null
+          total_volume?: number
+          user_id?: string
+          week_number?: number
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never

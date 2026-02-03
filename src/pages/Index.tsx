@@ -1,8 +1,9 @@
 import { useNavigate } from 'react-router-dom';
 import { useGlobalContext } from '@/context/GlobalContext';
+import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Camera, Calendar, Dumbbell, Activity } from 'lucide-react';
+import { Camera, Calendar, Dumbbell, Activity, LogIn, LogOut, User } from 'lucide-react';
 
 // Phase descriptions
 const PHASE_LABELS: Record<string, string> = {
@@ -15,6 +16,7 @@ const PHASE_LABELS: Record<string, string> = {
 export default function Index() {
   const navigate = useNavigate();
   const { program, onboardingComplete, currentWeek } = useGlobalContext();
+  const { user, signOut, loading } = useAuth();
 
   // If not onboarded, show welcome screen
   if (!onboardingComplete || !program) {
@@ -36,6 +38,18 @@ export default function Index() {
             >
               Get Started
             </Button>
+            
+            {!user && (
+              <Button 
+                variant="outline"
+                onClick={() => navigate('/auth')}
+                className="w-full h-12"
+              >
+                <LogIn className="w-4 h-4 mr-2" />
+                Sign In to Sync Data
+              </Button>
+            )}
+            
             <p className="text-sm text-muted-foreground">
               Create your personalized training program
             </p>
@@ -66,6 +80,10 @@ export default function Index() {
   const todaySession = currentWeekData?.sessions[todayIndex];
   const phaseLabel = PHASE_LABELS[currentWeekData?.phase] || currentWeekData?.phase;
 
+  const handleSignOut = async () => {
+    await signOut();
+  };
+
   return (
     <div className="min-h-screen bg-background">
       <header className="bg-card border-b border-border p-4">
@@ -74,13 +92,49 @@ export default function Index() {
             <Activity className="w-6 h-6 text-primary" />
             <h1 className="text-xl font-bold">Aurora</h1>
           </div>
-          <Button variant="outline" size="sm" onClick={() => navigate('/program')}>
-            View Program
-          </Button>
+          <div className="flex items-center gap-2">
+            {user ? (
+              <>
+                <div className="flex items-center gap-2 text-sm text-muted-foreground mr-2">
+                  <User className="w-4 h-4" />
+                  <span className="hidden sm:inline">{user.email}</span>
+                </div>
+                <Button variant="ghost" size="sm" onClick={handleSignOut} disabled={loading}>
+                  <LogOut className="w-4 h-4" />
+                </Button>
+              </>
+            ) : (
+              <Button variant="outline" size="sm" onClick={() => navigate('/auth')}>
+                <LogIn className="w-4 h-4 mr-2" />
+                Sign In
+              </Button>
+            )}
+            <Button variant="outline" size="sm" onClick={() => navigate('/program')}>
+              View Program
+            </Button>
+          </div>
         </div>
       </header>
 
       <main className="max-w-4xl mx-auto p-4 space-y-6">
+        {/* Sync Banner for non-authenticated users */}
+        {!user && (
+          <Card className="border-primary/20 bg-primary/5">
+            <CardContent className="p-4 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <LogIn className="w-5 h-5 text-primary" />
+                <div>
+                  <p className="font-medium">Sync your workouts</p>
+                  <p className="text-sm text-muted-foreground">Sign in to save data across devices</p>
+                </div>
+              </div>
+              <Button size="sm" onClick={() => navigate('/auth')}>
+                Sign In
+              </Button>
+            </CardContent>
+          </Card>
+        )}
+
         {/* Today's Session */}
         <Card>
           <CardHeader>
