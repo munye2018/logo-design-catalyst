@@ -1,166 +1,205 @@
 
-# Implementation Plan: Audio Feedback + Security Fixes
+
+# Add Angle Progress Indicator and Workout History Tracker
 
 ## Overview
 
-This plan adds audio feedback for completed reps and removes unused Expo/React Native dependencies to fix the security vulnerability.
+This plan adds two features to enhance the fitness tracking experience:
+
+1. **Angle Progress Indicator**: A visual gauge showing how close the current joint angle is to the optimal range for the exercise
+2. **Workout History Tracker**: A dedicated page to view past workouts with detailed exercise logs
 
 ---
 
-## Part 1: Add Audio Rep Feedback
+## Part 1: Angle Progress Indicator
 
-### Approach
+### What It Does
 
-Use the Web Audio API to generate simple audio tones when:
-1. A rep is completed (success sound)
-2. Optionally: Form correction warnings (warning sound)
+During a workout, you'll see a visual gauge that shows:
+- Your current joint angle
+- The target "bottom" and "top" ranges for the exercise
+- Real-time progress as you move through the range of motion
+- Color-coded feedback (green when in optimal range, yellow/red when outside)
 
-This approach avoids external dependencies or audio file loading.
+### Technical Implementation
 
-### New File: `src/lib/audioFeedback.ts`
+#### New Component: `src/components/AngleProgressIndicator.tsx`
 
-Create an audio feedback utility using Web Audio API:
+A reusable component that displays:
+- A circular or linear progress gauge
+- Current angle value
+- Target range labels
+- Visual color changes based on position in range
+
+```text
+Design:
+  +--------------------------------------------+
+  |  BOTTOM ◄========[●]============► TOP      |
+  |   70°              115°              180°  |
+  |          ░░░░░░███████████░░░░░░           |
+  |                                            |
+  |   Status: In Range ✓  |  Target: 70-100°  |
+  +--------------------------------------------+
+```
+
+The indicator calculates:
+- `progress = (currentAngle - minAngle) / (maxAngle - minAngle) * 100`
+- Highlight zones: Bottom range (contracted), Top range (extended)
+- Color: Green when in target zone, yellow approaching, red outside
+
+#### Modify: `src/pages/Analysis.tsx`
+
+Replace the simple angle text display with the new progress indicator:
+- Show above or below the rep counter
+- Update in real-time with the pose detection
+- Animate smoothly between angle readings
+
+#### Modify: `src/lib/repCounter.ts`
+
+Export additional helper info:
+- `getAngleProgress(currentAngle, config)`: Returns percentage and zone info
+- `isInOptimalRange(currentAngle, phase)`: Boolean for form feedback
+
+---
+
+## Part 2: Workout History Tracker
+
+### What It Does
+
+A new page that shows:
+- Calendar view of past workout days
+- List of completed sessions with dates
+- Detailed logs for each exercise (sets, reps, weight, difficulty)
+- Summary statistics (total workouts, volume trends)
+
+### Data Structure
+
+The existing `GlobalContext` already tracks:
+- `completedSessions`: Record of which sessions are done
+- `exerciseLogs`: Details of each exercise completion
+
+We need to add:
+- `workoutHistory`: Array of completed workout entries with timestamps
+
+#### New Type: `WorkoutHistoryEntry`
 
 ```typescript
-class AudioFeedback {
-  private audioContext: AudioContext | null = null;
-  private enabled: boolean = true;
-  
-  // Initialize AudioContext (lazy, on first user interaction)
-  private getContext(): AudioContext {
-    if (!this.audioContext) {
-      this.audioContext = new AudioContext();
-    }
-    return this.audioContext;
-  }
-  
-  // Play rep completion sound (short success beep)
-  playRepComplete(): void
-  
-  // Play warning sound for form issues
-  playWarning(): void
-  
-  // Toggle audio on/off
-  setEnabled(enabled: boolean): void
+interface WorkoutHistoryEntry {
+  id: string;
+  date: number; // timestamp
+  weekNumber: number;
+  sessionName: string;
+  sessionType: SessionType;
+  exercises: Array<{
+    name: string;
+    sets: number;
+    reps: number;
+    weight?: number;
+    difficulty: 'easy' | 'moderate' | 'hard';
+  }>;
+  totalVolume: number; // sets × reps × weight
+  duration?: number; // if tracked
 }
 ```
 
-**Sound Design:**
-- **Rep Complete**: Short ascending two-tone beep (440Hz → 880Hz, 100ms total)
-- **Warning**: Single lower tone (330Hz, 150ms) for form corrections
+### Files to Create/Modify
 
-### Modify: `src/hooks/usePoseDetection.ts`
+#### New File: `src/pages/History.tsx`
 
-Add callback for rep completion events:
+Main history page with:
+- Header with "Workout History" title
+- Summary cards (total workouts, current streak, volume this week)
+- List of workout entries sorted by date (most recent first)
+- Each entry expandable to show exercise details
+- Empty state when no history
+
+#### New File: `src/components/WorkoutHistoryCard.tsx`
+
+Card component for each workout entry:
+- Date and session name
+- Quick stats (exercises completed, estimated volume)
+- Expandable details section
+- Difficulty rating visualization
+
+#### Modify: `src/context/GlobalContext.tsx`
+
+Add workout history state and functions:
+- `workoutHistory: WorkoutHistoryEntry[]`
+- `addWorkoutToHistory(entry: WorkoutHistoryEntry): void`
+- `getWorkoutStats(): { totalWorkouts, currentStreak, weeklyVolume }`
+- LocalStorage persistence with key `aurora_workout_history`
+
+Update `markSessionComplete` to also create a history entry.
+
+#### Modify: `src/App.tsx`
+
+Add new route: `/history`
+
+#### Modify: `src/pages/Program.tsx` (or Index.tsx)
+
+Add navigation to History page (button or nav link).
+
+---
+
+## Implementation Details
+
+### Angle Progress Indicator Logic
 
 ```typescript
-// Add to hook parameters
-onRepComplete?: () => void;
-
-// Call when rep is counted
-if (newRepState.repCount > previousRepCount) {
-  onRepComplete?.();
+function calculateAngleProgress(
+  currentAngle: number,
+  bottomRange: [number, number],
+  topRange: [number, number]
+): {
+  progress: number; // 0-100
+  zone: 'bottom' | 'middle' | 'top' | 'outside';
+  inOptimalZone: boolean;
+} {
+  const minAngle = bottomRange[0];
+  const maxAngle = topRange[1];
+  const range = maxAngle - minAngle;
+  
+  const progress = ((currentAngle - minAngle) / range) * 100;
+  
+  const inBottom = currentAngle >= bottomRange[0] && currentAngle <= bottomRange[1];
+  const inTop = currentAngle >= topRange[0] && currentAngle <= topRange[1];
+  
+  return {
+    progress: Math.max(0, Math.min(100, progress)),
+    zone: inBottom ? 'bottom' : inTop ? 'top' : progress < 50 ? 'middle' : 'outside',
+    inOptimalZone: inBottom || inTop,
+  };
 }
 ```
 
-### Modify: `src/pages/Analysis.tsx`
+### History Page Layout
 
-1. Import and initialize audio feedback
-2. Pass `onRepComplete` callback to `usePoseDetection`
-3. Add audio toggle button to UI
-
-```typescript
-import { audioFeedback } from '@/lib/audioFeedback';
-
-// In component:
-const [audioEnabled, setAudioEnabled] = useState(true);
-
-const handleRepComplete = useCallback(() => {
-  if (audioEnabled) {
-    audioFeedback.playRepComplete();
-  }
-}, [audioEnabled]);
-
-// Pass to hook:
-const { ... } = usePoseDetection({
-  webcamRef,
-  canvasRef,
-  enabled: cameraEnabled,
-  exerciseType: selectedExercise,
-  onRepComplete: handleRepComplete,
-});
+```text
++----------------------------------+
+|  ◄ Workout History               |
++----------------------------------+
+|                                  |
+|  [Total: 12] [Streak: 5] [Vol]  |
+|                                  |
+|  +----------------------------+  |
+|  | Today - Push Day           |  |
+|  | 6 exercises • 42 sets      |  |
+|  | ▼ Expand                   |  |
+|  +----------------------------+  |
+|                                  |
+|  +----------------------------+  |
+|  | Yesterday - Pull Day       |  |
+|  | 5 exercises • 35 sets      |  |
+|  | ▼ Expand                   |  |
+|  +----------------------------+  |
+|                                  |
+|  +----------------------------+  |
+|  | 2 days ago - Leg Day       |  |
+|  | 7 exercises • 48 sets      |  |
+|  | ▼ Expand                   |  |
+|  +----------------------------+  |
++----------------------------------+
 ```
-
-### UI Changes
-
-Add a speaker/mute toggle button near the rep counter:
-- Volume2 icon when enabled
-- VolumeX icon when muted
-- Tooltip: "Toggle audio feedback"
-
----
-
-## Part 2: Fix Security Vulnerability
-
-### Problem
-
-The project contains unused Expo and React Native packages which introduce a supply chain vulnerability in `expo@~52.0.17`.
-
-### Solution
-
-Remove all Expo and React Native dependencies since this is a Vite web-only application.
-
-### Modify: `package.json`
-
-Remove these dependencies:
-
-**Dependencies to remove:**
-- `@expo/vector-icons`
-- `@react-navigation/bottom-tabs`
-- `@react-navigation/native`
-- `expo`
-- `expo-blur`
-- `expo-constants`
-- `expo-font`
-- `expo-haptics`
-- `expo-linking`
-- `expo-navigation-bar`
-- `expo-router`
-- `expo-splash-screen`
-- `expo-status-bar`
-- `expo-symbols`
-- `expo-system-ui`
-- `expo-web-browser`
-- `react-native`
-- `react-native-gesture-handler`
-- `react-native-reanimated`
-- `react-native-safe-area-context`
-- `react-native-screens`
-- `react-native-web`
-- `react-native-webview`
-
-**DevDependencies to remove:**
-- `jest-expo`
-- `react-test-renderer`
-- `@types/react-test-renderer`
-
-**Also update:**
-- Remove `"main": "expo-router/entry"` field
-- Remove `"jest"` configuration block
-
-### Files to Delete
-
-- `app.json` (Expo configuration - no longer needed)
-
----
-
-## Implementation Order
-
-1. **`src/lib/audioFeedback.ts`** (new) - Audio utility class
-2. **`src/hooks/usePoseDetection.ts`** - Add onRepComplete callback
-3. **`src/pages/Analysis.tsx`** - Integrate audio + add toggle button
-4. **`package.json`** - Remove unused dependencies
-5. **Delete `app.json`** - Remove Expo config
 
 ---
 
@@ -168,19 +207,24 @@ Remove these dependencies:
 
 | File | Action | Purpose |
 |------|--------|---------|
-| `src/lib/audioFeedback.ts` | Create | Web Audio API feedback |
-| `src/hooks/usePoseDetection.ts` | Modify | Add rep completion callback |
-| `src/pages/Analysis.tsx` | Modify | Audio toggle UI + integration |
-| `package.json` | Modify | Remove 24 unused dependencies |
-| `app.json` | Delete | Expo config no longer needed |
+| `src/components/AngleProgressIndicator.tsx` | Create | Visual angle gauge component |
+| `src/pages/History.tsx` | Create | Workout history page |
+| `src/components/WorkoutHistoryCard.tsx` | Create | Individual workout card component |
+| `src/pages/Analysis.tsx` | Modify | Add angle progress indicator |
+| `src/context/GlobalContext.tsx` | Modify | Add history state and functions |
+| `src/App.tsx` | Modify | Add /history route |
+| `src/pages/Program.tsx` | Modify | Add History navigation button |
 
 ---
 
 ## Testing Checklist
 
 After implementation:
-- [ ] Audio plays when completing a rep (squat, curl, etc.)
-- [ ] Audio can be muted via toggle button
-- [ ] Build succeeds without Expo dependencies
-- [ ] No new security vulnerabilities reported
-- [ ] Pose detection still works as expected
+- [ ] Angle indicator updates smoothly during exercise
+- [ ] Color changes when entering/exiting optimal ranges
+- [ ] Completing a session adds entry to history
+- [ ] History page shows all past workouts
+- [ ] Workout cards expand to show exercise details
+- [ ] History persists after page refresh
+- [ ] Empty state shows when no history exists
+
