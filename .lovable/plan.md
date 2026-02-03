@@ -1,172 +1,186 @@
 
+# Implementation Plan: Audio Feedback + Security Fixes
 
-# Fix Pose Detection & Enhance Form Analysis
+## Overview
 
-## Problem Analysis
-
-The AI model fails to initialize with `"module is not defined"` error. This occurs because:
-1. TensorFlow.js has dependencies (like `long`) that use CommonJS format
-2. Vite's ESM bundling doesn't handle these CommonJS modules correctly by default
-3. The WebGPU backend is being imported but may not be supported in all browsers
-
-## Solution
-
-### Part 1: Fix TensorFlow.js Initialization
-
-**File: `vite.config.ts`**
-
-Update Vite configuration to properly handle TensorFlow.js CommonJS dependencies:
-- Add CommonJS compatibility for TensorFlow dependencies
-- Configure `optimizeDeps.include` to pre-bundle TensorFlow packages
-- Add `esbuildOptions` to handle CommonJS modules
-
-**File: `src/hooks/usePoseDetection.ts`**
-
-Make the initialization more robust:
-- Add fallback backend selection (WebGL -> CPU)
-- Add better error handling with specific error messages
-- Ensure proper async/await handling for dynamic imports
-- Add a retry mechanism if initial load fails
-
-### Part 2: Fix Canvas Overlay Positioning
-
-**File: `src/pages/Analysis.tsx`**
-
-Ensure the skeleton overlay displays correctly on the webcam:
-- The canvas dimensions need to match the video element dynamically
-- Add a `ResizeObserver` to update canvas size when video loads
-- Fix the `pose-canvas` CSS to properly scale with the video
-
-**File: `src/index.css`**
-
-Verify the `.pose-canvas` styles properly overlay the webcam feed with correct scaling.
-
-### Part 3: Add Rep Counting with Optimal Angles
-
-**New File: `src/lib/repCounter.ts`**
-
-Create a rep counting system that tracks:
-- Exercise-specific joint angles for "top" and "bottom" of movement
-- State machine: `idle` -> `descending` -> `bottom` -> `ascending` -> `top` -> rep complete
-- Optimal angle ranges per exercise
-
-**Angle definitions for key exercises:**
-
-| Exercise | Joint | Bottom Angle | Top Angle |
-|----------|-------|--------------|-----------|
-| Squat | Knee | 70-90 degrees | 160-180 degrees |
-| Deadlift | Hip | 80-100 degrees | 170-180 degrees |
-| Bench Press | Elbow | 80-100 degrees | 160-180 degrees |
-| Overhead Press | Elbow | 80-100 degrees | 170-180 degrees |
-| Bicep Curl | Elbow | 40-60 degrees | 150-170 degrees |
-| Lunge | Front Knee | 80-100 degrees | 160-180 degrees |
-| Push-up | Elbow | 80-100 degrees | 160-180 degrees |
-| Lat Pulldown | Elbow | 40-60 degrees | 140-160 degrees |
-
-**File: `src/hooks/usePoseDetection.ts`**
-
-Integrate rep counting:
-- Add `repCount` to the return value
-- Track movement phase based on angle thresholds
-- Fire rep completion when full range of motion detected
-
-**File: `src/pages/Analysis.tsx`**
-
-Display rep counter:
-- Show current rep count prominently on screen
-- Visual feedback when rep is completed (flash effect)
-- Display current joint angle for the selected exercise
+This plan adds audio feedback for completed reps and removes unused Expo/React Native dependencies to fix the security vulnerability.
 
 ---
 
-## Implementation Details
+## Part 1: Add Audio Rep Feedback
 
-### Vite Config Changes
+### Approach
 
-```typescript
-optimizeDeps: {
-  include: [
-    '@tensorflow/tfjs',
-    '@tensorflow/tfjs-core',
-    '@tensorflow/tfjs-backend-webgl',
-    '@tensorflow-models/pose-detection',
-  ],
-  esbuildOptions: {
-    define: {
-      global: 'globalThis',
-    },
-  },
-},
-```
+Use the Web Audio API to generate simple audio tones when:
+1. A rep is completed (success sound)
+2. Optionally: Form correction warnings (warning sound)
 
-### Rep Counter State Machine
+This approach avoids external dependencies or audio file loading.
 
-```text
-           +-------+
-           | IDLE  |
-           +---+---+
-               |
-               v (angle decreasing past threshold)
-        +------+------+
-        | DESCENDING  |
-        +------+------+
-               |
-               v (angle reaches bottom range)
-        +------+------+
-        |   BOTTOM    |
-        +------+------+
-               |
-               v (angle increasing)
-        +------+------+
-        |  ASCENDING  |
-        +------+------+
-               |
-               v (angle reaches top range)
-        +------+------+
-        |    TOP      +-----> Rep Counted!
-        +------+------+
-               |
-               v
-           +---+---+
-           | IDLE  | (ready for next rep)
-           +-------+
-```
+### New File: `src/lib/audioFeedback.ts`
 
-### Exercise Angle Configurations
-
-Each exercise will have a configuration object:
+Create an audio feedback utility using Web Audio API:
 
 ```typescript
-interface ExerciseConfig {
-  primaryJoints: {
-    point1: string; // shoulder
-    point2: string; // elbow (vertex)
-    point3: string; // wrist
-  };
-  bottomAngleRange: [number, number]; // [min, max]
-  topAngleRange: [number, number];
-  repDirection: 'down-up' | 'up-down'; // squat vs overhead press
+class AudioFeedback {
+  private audioContext: AudioContext | null = null;
+  private enabled: boolean = true;
+  
+  // Initialize AudioContext (lazy, on first user interaction)
+  private getContext(): AudioContext {
+    if (!this.audioContext) {
+      this.audioContext = new AudioContext();
+    }
+    return this.audioContext;
+  }
+  
+  // Play rep completion sound (short success beep)
+  playRepComplete(): void
+  
+  // Play warning sound for form issues
+  playWarning(): void
+  
+  // Toggle audio on/off
+  setEnabled(enabled: boolean): void
 }
 ```
 
+**Sound Design:**
+- **Rep Complete**: Short ascending two-tone beep (440Hz → 880Hz, 100ms total)
+- **Warning**: Single lower tone (330Hz, 150ms) for form corrections
+
+### Modify: `src/hooks/usePoseDetection.ts`
+
+Add callback for rep completion events:
+
+```typescript
+// Add to hook parameters
+onRepComplete?: () => void;
+
+// Call when rep is counted
+if (newRepState.repCount > previousRepCount) {
+  onRepComplete?.();
+}
+```
+
+### Modify: `src/pages/Analysis.tsx`
+
+1. Import and initialize audio feedback
+2. Pass `onRepComplete` callback to `usePoseDetection`
+3. Add audio toggle button to UI
+
+```typescript
+import { audioFeedback } from '@/lib/audioFeedback';
+
+// In component:
+const [audioEnabled, setAudioEnabled] = useState(true);
+
+const handleRepComplete = useCallback(() => {
+  if (audioEnabled) {
+    audioFeedback.playRepComplete();
+  }
+}, [audioEnabled]);
+
+// Pass to hook:
+const { ... } = usePoseDetection({
+  webcamRef,
+  canvasRef,
+  enabled: cameraEnabled,
+  exerciseType: selectedExercise,
+  onRepComplete: handleRepComplete,
+});
+```
+
+### UI Changes
+
+Add a speaker/mute toggle button near the rep counter:
+- Volume2 icon when enabled
+- VolumeX icon when muted
+- Tooltip: "Toggle audio feedback"
+
 ---
 
-## Files to Modify
+## Part 2: Fix Security Vulnerability
 
-1. **`vite.config.ts`** - Fix CommonJS compatibility for TensorFlow
-2. **`src/hooks/usePoseDetection.ts`** - Robust initialization + rep counting
-3. **`src/lib/repCounter.ts`** (new) - Rep counting logic with angle tracking
-4. **`src/pages/Analysis.tsx`** - Display rep count and current angles
-5. **`src/lib/exerciseRules.ts`** - Add optimal angle constants per exercise
+### Problem
+
+The project contains unused Expo and React Native packages which introduce a supply chain vulnerability in `expo@~52.0.17`.
+
+### Solution
+
+Remove all Expo and React Native dependencies since this is a Vite web-only application.
+
+### Modify: `package.json`
+
+Remove these dependencies:
+
+**Dependencies to remove:**
+- `@expo/vector-icons`
+- `@react-navigation/bottom-tabs`
+- `@react-navigation/native`
+- `expo`
+- `expo-blur`
+- `expo-constants`
+- `expo-font`
+- `expo-haptics`
+- `expo-linking`
+- `expo-navigation-bar`
+- `expo-router`
+- `expo-splash-screen`
+- `expo-status-bar`
+- `expo-symbols`
+- `expo-system-ui`
+- `expo-web-browser`
+- `react-native`
+- `react-native-gesture-handler`
+- `react-native-reanimated`
+- `react-native-safe-area-context`
+- `react-native-screens`
+- `react-native-web`
+- `react-native-webview`
+
+**DevDependencies to remove:**
+- `jest-expo`
+- `react-test-renderer`
+- `@types/react-test-renderer`
+
+**Also update:**
+- Remove `"main": "expo-router/entry"` field
+- Remove `"jest"` configuration block
+
+### Files to Delete
+
+- `app.json` (Expo configuration - no longer needed)
+
+---
+
+## Implementation Order
+
+1. **`src/lib/audioFeedback.ts`** (new) - Audio utility class
+2. **`src/hooks/usePoseDetection.ts`** - Add onRepComplete callback
+3. **`src/pages/Analysis.tsx`** - Integrate audio + add toggle button
+4. **`package.json`** - Remove unused dependencies
+5. **Delete `app.json`** - Remove Expo config
+
+---
+
+## Files Summary
+
+| File | Action | Purpose |
+|------|--------|---------|
+| `src/lib/audioFeedback.ts` | Create | Web Audio API feedback |
+| `src/hooks/usePoseDetection.ts` | Modify | Add rep completion callback |
+| `src/pages/Analysis.tsx` | Modify | Audio toggle UI + integration |
+| `package.json` | Modify | Remove 24 unused dependencies |
+| `app.json` | Delete | Expo config no longer needed |
 
 ---
 
 ## Testing Checklist
 
 After implementation:
-- Camera starts without "Failed to initialize" error
-- Skeleton overlay appears on webcam feed
-- Selecting different exercises changes the form rules
-- Rep counter increments when completing full range of motion
-- Form feedback appears based on exercise-specific rules
-
+- [ ] Audio plays when completing a rep (squat, curl, etc.)
+- [ ] Audio can be muted via toggle button
+- [ ] Build succeeds without Expo dependencies
+- [ ] No new security vulnerabilities reported
+- [ ] Pose detection still works as expected
