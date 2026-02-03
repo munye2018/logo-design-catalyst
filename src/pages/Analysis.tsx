@@ -5,8 +5,9 @@ import { useGlobalContext } from '@/context/GlobalContext';
 import { usePoseDetection } from '@/hooks/usePoseDetection';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { ArrowLeft, Camera, CameraOff, AlertCircle, CheckCircle, Info } from 'lucide-react';
+import { ArrowLeft, Camera, CameraOff, AlertCircle, CheckCircle, Info, RotateCcw } from 'lucide-react';
 import { analyzeMovement, getExerciseType, getAnalyzableExercises, type ExerciseType } from '@/lib/exerciseRules';
+import { exerciseRepConfigs } from '@/lib/repCounter';
 
 export default function Analysis() {
   const { exerciseId } = useParams();
@@ -15,10 +16,12 @@ export default function Analysis() {
   
   const webcamRef = useRef<Webcam>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   
   const [cameraEnabled, setCameraEnabled] = useState(false);
   const [selectedExercise, setSelectedExercise] = useState<ExerciseType>('squat');
   const [cameraError, setCameraError] = useState<string | null>(null);
+  const [repFlash, setRepFlash] = useState(false);
 
   const session = program?.[currentWeek]?.sessions[0];
   const exercises = session?.exercises || [];
@@ -31,12 +34,41 @@ export default function Analysis() {
     }
   }, [exerciseId, exercises]);
 
-  // Pose detection hook
-  const { isLoading, isDetecting, keypoints, error } = usePoseDetection({
+  // Pose detection hook with rep counting
+  const { isLoading, isDetecting, keypoints, error, repState, resetReps } = usePoseDetection({
     webcamRef,
     canvasRef,
     enabled: cameraEnabled,
+    exerciseType: selectedExercise,
   });
+
+  // Flash effect when rep is counted
+  useEffect(() => {
+    if (repState.isValidRep) {
+      setRepFlash(true);
+      const timeout = setTimeout(() => setRepFlash(false), 300);
+      return () => clearTimeout(timeout);
+    }
+  }, [repState.repCount, repState.isValidRep]);
+
+  // Update canvas size to match video
+  useEffect(() => {
+    const container = containerRef.current;
+    const canvas = canvasRef.current;
+    
+    if (!container || !canvas) return;
+
+    const resizeObserver = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const { width, height } = entry.contentRect;
+        canvas.width = width;
+        canvas.height = height;
+      }
+    });
+
+    resizeObserver.observe(container);
+    return () => resizeObserver.disconnect();
+  }, []);
 
   // Analyze movement when we have keypoints
   useEffect(() => {
@@ -63,6 +95,12 @@ export default function Analysis() {
     setCameraEnabled(false);
   }, []);
 
+  const handleExerciseChange = useCallback((exercise: ExerciseType) => {
+    setSelectedExercise(exercise);
+    resetReps();
+    clearFeedback();
+  }, [resetReps, clearFeedback]);
+
   const getFeedbackIcon = (severity: string) => {
     switch (severity) {
       case 'error':
@@ -76,6 +114,9 @@ export default function Analysis() {
 
   // Get analyzable exercises from the rules library
   const exerciseOptions = getAnalyzableExercises();
+  
+  // Get current exercise config for angle display
+  const currentConfig = exerciseRepConfigs[selectedExercise];
 
   return (
     <div className="min-h-screen bg-background">
@@ -97,7 +138,7 @@ export default function Analysis() {
             <label className="block text-sm font-medium mb-2">Select Exercise</label>
             <select
               value={selectedExercise}
-              onChange={(e) => setSelectedExercise(e.target.value as ExerciseType)}
+              onChange={(e) => handleExerciseChange(e.target.value as ExerciseType)}
               className="w-full h-10 rounded-md border border-input bg-background px-3 py-2"
             >
               {exerciseOptions.map((opt) => (
@@ -106,6 +147,49 @@ export default function Analysis() {
                 </option>
               ))}
             </select>
+          </CardContent>
+        </Card>
+
+        {/* Rep Counter Display */}
+        <Card className={`transition-all duration-150 ${repFlash ? 'ring-4 ring-success bg-success/10' : ''}`}>
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between">
+              <div className="text-center flex-1">
+                <div className="text-6xl font-bold text-primary">{repState.repCount}</div>
+                <div className="text-sm text-muted-foreground mt-1">REPS</div>
+              </div>
+              <div className="border-l border-border pl-6 flex-1">
+                <div className="space-y-2">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Phase:</span>
+                    <span className="font-medium capitalize">{repState.currentPhase}</span>
+                  </div>
+                  {repState.currentAngle !== null && currentConfig && (
+                    <>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-muted-foreground">Current Angle:</span>
+                        <span className="font-medium">{repState.currentAngle}°</span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-muted-foreground">Target Range:</span>
+                        <span className="font-medium text-xs">
+                          {currentConfig.bottomAngleRange[0]}° - {currentConfig.topAngleRange[1]}°
+                        </span>
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={resetReps}
+                className="ml-4"
+              >
+                <RotateCcw className="w-4 h-4 mr-1" />
+                Reset
+              </Button>
+            </div>
           </CardContent>
         </Card>
 
@@ -121,7 +205,7 @@ export default function Analysis() {
                 disabled={isLoading}
               >
                 {isLoading ? (
-                  'Loading...'
+                  'Loading AI...'
                 ) : cameraEnabled ? (
                   <>
                     <CameraOff className="w-4 h-4 mr-2" />
@@ -137,7 +221,10 @@ export default function Analysis() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="camera-container bg-muted rounded-lg overflow-hidden mx-auto">
+            <div 
+              ref={containerRef}
+              className="camera-container bg-muted rounded-lg overflow-hidden mx-auto"
+            >
               {cameraEnabled ? (
                 <>
                   <Webcam
@@ -155,13 +242,16 @@ export default function Analysis() {
                   <canvas
                     ref={canvasRef}
                     className="pose-canvas"
-                    width={640}
-                    height={480}
                   />
                   {isDetecting && (
                     <div className="absolute top-2 left-2 bg-success/90 text-success-foreground px-2 py-1 rounded text-xs flex items-center gap-1">
                       <CheckCircle className="w-3 h-3" />
                       Detecting
+                    </div>
+                  )}
+                  {repState.currentAngle !== null && (
+                    <div className="absolute top-2 right-2 bg-accent/90 text-accent-foreground px-3 py-1 rounded text-sm font-bold">
+                      {repState.currentAngle}°
                     </div>
                   )}
                 </>
@@ -238,6 +328,7 @@ export default function Analysis() {
               <li>• Position camera so your full body is visible</li>
               <li>• Wear contrasting clothing against background</li>
               <li>• Perform movements at a moderate pace</li>
+              <li>• Complete full range of motion for reps to count</li>
             </ul>
           </CardContent>
         </Card>
