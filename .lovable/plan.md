@@ -1,278 +1,211 @@
 
 
-# Aurora Web App Conversion with AI Movement Analysis
+# Aurora Transformation Plan: Sprint Training to General Gym Fitness
 
 ## Overview
 
-Converting the existing React Native sprint training app into a modern React web application, enhanced with computer vision capabilities to analyze body movements during exercises and provide real-time feedback for improved performance and safety.
+Transform Aurora from a sprint/athletics training app into a comprehensive gym fitness app with broader exercise support, enhanced coaching, and session progress tracking.
 
-## Current App Analysis
+## Current State Summary
 
-The existing app is a **sprint training program generator** with:
-- **Onboarding flow**: Collects user sex, primary event (100m-800m), season's best time, and program type
-- **Program generation**: Creates 20-week periodized training plans (offseason, general, specific, pre-competition phases)
-- **Session tracking**: Displays exercises with pace targets, recovery times, and allows time logging
-- **Exercise types**: Acceleration, max velocity, speed endurance, tempo runs, circuits, weight training
-
-## New Feature: AI Movement Analysis
-
-Using **TensorFlow.js with PoseNet/MoveNet** for browser-based pose estimation to:
-1. Track 17 key body points (shoulders, elbows, hips, knees, ankles, etc.)
-2. Analyze movement patterns during exercises
-3. Provide real-time visual feedback with skeleton overlay
-4. Generate form corrections and safety recommendations
+After testing the app end-to-end:
+- Onboarding collects sprint-specific data (100m/200m/400m/800m events, race times)
+- Program generates 20-week periodized sprint training (offseason, general, specific, preComp phases)
+- Sessions include sprint drills: Hills, Extensive Tempo, Speed Endurance, etc.
+- Movement Analysis supports only 7 exercises: Squat, Lunge, Box Jump, A-Skip, B-Skip, Calf Raise, Running Form
+- Camera analysis with skeletal overlay is functional
 
 ---
 
-## Project Architecture
+## Phase 1: Redesign Onboarding Flow
 
-```text
-src/
-+-- components/
-|   +-- analysis/
-|   |   +-- CameraView.tsx          # Webcam feed with pose overlay
-|   |   +-- PoseAnalyzer.tsx        # Movement analysis logic
-|   |   +-- FeedbackPanel.tsx       # Real-time form corrections
-|   |   +-- ExerciseSelector.tsx    # Choose exercise to analyze
-|   +-- layout/
-|   |   +-- Navbar.tsx
-|   |   +-- Sidebar.tsx
-|   +-- onboarding/
-|   |   +-- SexStep.tsx
-|   |   +-- EventStep.tsx
-|   |   +-- TimeStep.tsx
-|   |   +-- ProgramStep.tsx
-|   +-- program/
-|   |   +-- WeekIndicator.tsx
-|   |   +-- SessionCard.tsx
-|   |   +-- ExerciseCard.tsx
-|   +-- session/
-|   |   +-- SessionView.tsx
-|   |   +-- TimeLogger.tsx
-+-- context/
-|   +-- GlobalContext.tsx           # Shared state (adapted from existing)
-+-- hooks/
-|   +-- usePoseDetection.ts         # TensorFlow.js pose detection hook
-|   +-- useMovementAnalysis.ts      # Exercise-specific analysis
-+-- lib/
-|   +-- poseAnalysis.ts             # Pose analysis algorithms
-|   +-- exerciseRules.ts            # Form rules per exercise type
-|   +-- programGenerator.ts         # Adapted from existing models
-+-- pages/
-|   +-- Index.tsx                   # Landing/Dashboard
-|   +-- Onboarding.tsx              # Multi-step onboarding
-|   +-- Program.tsx                 # Weekly program view
-|   +-- Session.tsx                 # Session exercises
-|   +-- Analysis.tsx                # Movement analysis camera view
-```
+### New Onboarding Steps
+
+Replace the 4-step sprint-focused flow with a gym-focused flow:
+
+**Step 1: Fitness Goal**
+- Build Muscle (Hypertrophy)
+- Lose Weight / Get Lean
+- Build Strength
+- General Fitness
+
+**Step 2: Experience Level**
+- Beginner (0-1 year)
+- Intermediate (1-3 years)
+- Advanced (3+ years)
+
+**Step 3: Training Frequency**
+- 2-3 days per week
+- 4-5 days per week
+- 6 days per week
+
+**Step 4: Available Equipment**
+- Full Gym
+- Home Gym (Dumbbells + Bench)
+- Minimal (Bodyweight + Resistance Bands)
+
+### Files to Modify
+- `src/pages/Onboarding.tsx` - Replace steps with new questions
+- `src/context/GlobalContext.tsx` - Update user profile state (remove event/bestTime, add goal/experience/frequency/equipment)
 
 ---
 
-## Implementation Phases
+## Phase 2: Expand Program Generator for Gym Workouts
 
-### Phase 1: Web App Foundation
+### New Program Structure
 
-**Files to create:**
+Replace sprint periodization with gym training splits:
 
-1. **index.html** - Entry point with viewport meta tags
-2. **vite.config.ts** - Vite configuration for React/TypeScript
-3. **src/main.tsx** - React app entry
-4. **src/App.tsx** - Root component with routing
-5. **tailwind.config.ts** - Tailwind configuration
-6. **src/index.css** - Global styles with Tailwind imports
+**Beginner Programs**
+- Full Body 3x/week
 
-**Key changes:**
-- Replace React Native components with standard HTML/React components
-- Convert StyleSheet to Tailwind CSS classes
-- Replace expo-router with react-router-dom
-- Remove expo-navigation-bar and other native-only packages
+**Intermediate Programs**
+- Upper/Lower 4x/week
+- Push/Pull/Legs 6x/week
 
-### Phase 2: Context & State Migration
+**Session Types**
+- Push Day (Chest, Shoulders, Triceps)
+- Pull Day (Back, Biceps)
+- Leg Day (Quads, Hamstrings, Glutes)
+- Upper Body
+- Lower Body
+- Full Body
 
-**Adapt GlobalContext.tsx:**
-- Keep the same state structure (sex, event, bestTime, program, week, session)
-- Add new state for analysis mode and pose data
-- Properly type all state with TypeScript interfaces
+### New Exercise Library
 
-**New types:**
+Expand from 7 exercises to 50+ gym exercises organized by muscle group:
+
+**Chest**: Bench Press, Incline Press, Dumbbell Fly, Push-ups, Cable Crossover
+**Back**: Lat Pulldown, Barbell Row, Dumbbell Row, Pull-ups, Deadlift
+**Shoulders**: Overhead Press, Lateral Raise, Face Pulls, Front Raise
+**Arms**: Bicep Curls, Tricep Dips, Hammer Curls, Skull Crushers
+**Legs**: Squat, Leg Press, Romanian Deadlift, Lunges, Leg Curl, Leg Extension, Calf Raise
+**Core**: Plank, Russian Twist, Cable Crunch, Hanging Leg Raise
+
+### Files to Modify
+- `src/lib/programGenerator.ts` - Complete rewrite with gym-focused logic
+- Create `src/lib/exerciseLibrary.ts` - Centralized exercise database with muscle groups, equipment, difficulty
+
+---
+
+## Phase 3: Enhanced Exercise Coaching & Form Analysis
+
+### Expand Supported Exercises for Analysis
+
+Add form rules for common gym exercises:
+
+**Push Exercises**
+- Bench Press: Bar path, elbow angle, shoulder blade retraction
+- Overhead Press: Core bracing, bar path, full lockout
+
+**Pull Exercises**
+- Barbell Row: Back angle, rowing to hips, no momentum
+- Lat Pulldown: Full stretch, squeeze at bottom, no swinging
+
+**Leg Exercises**
+- Squat (enhanced): Depth, knee tracking, hip hinge, bar position
+- Deadlift: Neutral spine, hip hinge, bar path close to body
+- Lunges (enhanced): Knee over ankle, torso upright, step length
+
+**Core Exercises**
+- Plank: Neutral spine, no hip sag, shoulder alignment
+
+### Files to Modify
+- `src/lib/exerciseRules.ts` - Add rules for 15-20 key compound movements
+- Update `ExerciseType` type with new exercises
+
+---
+
+## Phase 4: Session Progress Tracking
+
+### Add Exercise Completion State
+
+Allow marking individual exercises as complete with logged data:
+- Sets completed
+- Reps performed
+- Weight used (optional)
+- Perceived difficulty (Easy/Moderate/Hard)
+
+### Session Completion Flow
+
+- Mark exercises complete individually via checkmark button
+- "Complete Session" button marks entire session done
+- Show session summary with total volume
+
+### Track Progress Over Time
+
+- Store completed sessions in context/localStorage
+- Show completed sessions with visual indicator (green checkmark)
+- Calculate weekly completion percentage
+
+### Files to Modify
+- `src/context/GlobalContext.tsx` - Add `completedExercises` state and `markExerciseComplete` action
+- `src/pages/Session.tsx` - Add completion UI for exercises
+- `src/lib/programGenerator.ts` - Add `loggedSets`, `loggedReps`, `loggedWeight` to Exercise type
+
+---
+
+## Phase 5: Update UI Copy & Branding
+
+### Dashboard Updates
+- Change "20-Week Plan" to "Your Training Plan"
+- Update tagline from "AI-powered movement analysis for athletes" to "AI-powered form coaching for your workouts"
+- Replace sprint-specific icons
+
+### Remove Sprint References
+- Remove "offseason", "preComp", etc. stage labels
+- Remove pace/tempo terminology
+- Remove distance-based targets
+
+### Files to Modify
+- `src/pages/Index.tsx` - Update copy and feature descriptions
+- `src/pages/Program.tsx` - Update week labels
+- `src/pages/Analysis.tsx` - Expand exercise selector
+
+---
+
+## Implementation Order
+
+1. **GlobalContext.tsx** - Update user profile state first
+2. **Onboarding.tsx** - New onboarding flow
+3. **programGenerator.ts + exerciseLibrary.ts** - New program logic
+4. **exerciseRules.ts** - Enhanced form analysis rules
+5. **Session.tsx** - Progress tracking UI
+6. **Index.tsx + Program.tsx + Analysis.tsx** - UI updates
+
+---
+
+## Technical Notes
+
+### State Changes in GlobalContext
+
+Remove:
+- `event: number`
+- `bestTime: number`
+
+Add:
 ```typescript
-interface PoseKeypoint {
-  x: number;
-  y: number;
-  score: number;
-  name: string;
-}
-
-interface AnalysisFeedback {
-  message: string;
-  severity: 'info' | 'warning' | 'error';
-  bodyPart: string;
-}
+fitnessGoal: 'muscle' | 'weight-loss' | 'strength' | 'general';
+experienceLevel: 'beginner' | 'intermediate' | 'advanced';
+trainingDays: 2 | 3 | 4 | 5 | 6;
+equipment: 'full-gym' | 'home-gym' | 'minimal';
+completedSessions: Record<string, boolean>;
+exerciseLogs: Record<string, ExerciseLog>;
 ```
 
-### Phase 3: Onboarding Flow
+### Program Generator Changes
 
-Convert each onboarding screen to web components:
+The new generator will:
+1. Select appropriate split based on training days
+2. Generate 8-12 week program (more realistic for gym users)
+3. Include progressive overload hints
+4. Match exercises to available equipment
 
-| React Native Screen | Web Component |
-|---------------------|---------------|
-| `sex.tsx` | `SexStep.tsx` |
-| `event.tsx` | `EventStep.tsx` |
-| `time.tsx` | `TimeStep.tsx` |
-| `program.tsx` | `ProgramStep.tsx` |
+### LocalStorage Persistence
 
-**Approach:**
-- Single-page multi-step form with progress indicator
-- Use shadcn/ui Button, Card, Input components
-- Maintain the same user flow
-
-### Phase 4: Program & Session Views
-
-Convert the training program display:
-
-1. **WeekIndicator** - Horizontal week selector (keep existing logic)
-2. **SessionCard** - Display daily sessions with progress bar
-3. **ExerciseCard** - Individual exercise with pace targets and time logging
-
-**Key features preserved:**
-- 20-week periodized program
-- Stage-based training (offseason, general, specific, pre-comp)
-- Exercise details (distance, reps, pace %, recovery time)
-- Time logging with hand/electronic toggle
-
-### Phase 5: Computer Vision - Movement Analysis
-
-**TensorFlow.js MoveNet Integration:**
-
-The MoveNet model (Lightning variant) runs entirely in the browser and detects 17 keypoints:
-- nose, left/right eye, left/right ear
-- left/right shoulder, left/right elbow, left/right wrist
-- left/right hip, left/right knee, left/right ankle
-
-**Hook: usePoseDetection.ts**
-```typescript
-// Initializes TensorFlow.js and MoveNet
-// Handles webcam stream
-// Returns real-time pose keypoints
-// Runs at ~30fps on modern hardware
-```
-
-**Hook: useMovementAnalysis.ts**
-```typescript
-// Takes pose data and current exercise type
-// Applies exercise-specific rules
-// Returns feedback messages
-```
-
-**Exercise-Specific Analysis Rules:**
-
-| Exercise | Key Angles/Positions | Feedback Examples |
-|----------|---------------------|-------------------|
-| **Squats** | Knee angle, hip depth, spine alignment | "Keep your knees behind your toes", "Lower your hips further" |
-| **Lunges** | Front knee angle, back knee height, torso upright | "Step further forward", "Keep your torso upright" |
-| **Box Jumps** | Hip/knee flex on landing, arm position | "Soft landing - bend your knees more" |
-| **Russian Twists** | Shoulder rotation, hip stability | "Rotate from your core, not shoulders" |
-| **Calf Raises** | Ankle extension, balance | "Rise higher on your toes", "Keep weight centered" |
-| **A-Skips/B-Skips** | Knee drive height, arm swing, posture | "Drive your knee higher", "Pump arms opposite to legs" |
-
-**Analysis Page Flow:**
-1. User selects exercise from current session
-2. Camera activates with permission prompt
-3. Real-time skeleton overlay appears on video
-4. Feedback panel shows corrections
-5. Option to record and review movement
-
----
-
-## Dependencies to Add
-
-```json
-{
-  "@tensorflow/tfjs": "^4.22.0",
-  "@tensorflow-models/pose-detection": "^2.1.3",
-  "react-router-dom": "^6.28.0",
-  "react-webcam": "^7.2.0",
-  "@tanstack/react-query": "^5.62.0",
-  "lucide-react": "^0.469.0"
-}
-```
-
-Plus existing Lovable stack: shadcn/ui, Tailwind CSS, TypeScript, Vite
-
----
-
-## UI/UX Design
-
-**Color Palette (from existing theme):**
-- Primary: #181818 (dark charcoal)
-- Secondary: #f0f0f0 (light gray background)
-- Accent: #007AFF (blue for CTAs)
-- Success: #77DD77 (green for good form)
-- Warning: #EDC966 (yellow for minor corrections)
-- Error: #FF6961 (red for safety concerns)
-
-**Key Screens:**
-
-1. **Dashboard** - Today's session, quick start analysis, weekly progress
-2. **Program View** - Week selector, 7-day session cards
-3. **Session View** - Exercise list with start/log buttons
-4. **Analysis View** - Full-screen camera with skeleton overlay and feedback panel
-
----
-
-## Technical Considerations
-
-### Performance
-- MoveNet Lightning runs at 30+ FPS on most devices
-- Use Web Workers for heavy analysis to prevent UI blocking
-- Throttle feedback updates to prevent overwhelming the user
-
-### Privacy
-- All processing happens client-side (no video sent to servers)
-- Camera permission is explicitly requested
-- No recordings stored unless user opts in
-
-### Browser Compatibility
-- Modern Chrome, Firefox, Safari, Edge
-- WebGL required for TensorFlow.js
-- Fallback message for unsupported browsers
-
----
-
-## Files Summary
-
-| Action | File | Purpose |
-|--------|------|---------|
-| Create | `index.html` | HTML entry point |
-| Create | `vite.config.ts` | Vite configuration |
-| Create | `src/main.tsx` | React app bootstrap |
-| Create | `src/App.tsx` | Root component with routing |
-| Create | `src/pages/Index.tsx` | Dashboard/landing |
-| Create | `src/pages/Onboarding.tsx` | Multi-step onboarding |
-| Create | `src/pages/Program.tsx` | Weekly program view |
-| Create | `src/pages/Session.tsx` | Session exercises |
-| Create | `src/pages/Analysis.tsx` | Movement analysis view |
-| Create | `src/context/GlobalContext.tsx` | Adapted state management |
-| Create | `src/hooks/usePoseDetection.ts` | TensorFlow pose detection |
-| Create | `src/hooks/useMovementAnalysis.ts` | Exercise analysis rules |
-| Create | `src/lib/programGenerator.ts` | Adapted program logic |
-| Create | `src/lib/exerciseRules.ts` | Form correction rules |
-| Create | `src/components/analysis/*` | Camera and feedback components |
-| Create | `src/components/program/*` | Program display components |
-| Delete/Archive | `app/` folder | React Native specific |
-| Delete/Archive | Expo config files | Not needed for web |
-
----
-
-## Success Criteria
-
-After implementation, users will be able to:
-
-1. Complete onboarding and generate a personalized training program
-2. View their weekly training schedule with session details
-3. Start any session and log their times for speed work
-4. Activate the camera for any exercise to get real-time form feedback
-5. See a skeleton overlay tracking their body position
-6. Receive actionable feedback like "Drive your knee higher" or "Keep your back straight"
-7. Improve their exercise form and reduce injury risk
+Add persistence for:
+- User profile
+- Program state
+- Completed sessions
+- Exercise logs
 
