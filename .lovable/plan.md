@@ -1,211 +1,172 @@
 
 
-# Aurora Transformation Plan: Sprint Training to General Gym Fitness
+# Fix Pose Detection & Enhance Form Analysis
 
-## Overview
+## Problem Analysis
 
-Transform Aurora from a sprint/athletics training app into a comprehensive gym fitness app with broader exercise support, enhanced coaching, and session progress tracking.
+The AI model fails to initialize with `"module is not defined"` error. This occurs because:
+1. TensorFlow.js has dependencies (like `long`) that use CommonJS format
+2. Vite's ESM bundling doesn't handle these CommonJS modules correctly by default
+3. The WebGPU backend is being imported but may not be supported in all browsers
 
-## Current State Summary
+## Solution
 
-After testing the app end-to-end:
-- Onboarding collects sprint-specific data (100m/200m/400m/800m events, race times)
-- Program generates 20-week periodized sprint training (offseason, general, specific, preComp phases)
-- Sessions include sprint drills: Hills, Extensive Tempo, Speed Endurance, etc.
-- Movement Analysis supports only 7 exercises: Squat, Lunge, Box Jump, A-Skip, B-Skip, Calf Raise, Running Form
-- Camera analysis with skeletal overlay is functional
+### Part 1: Fix TensorFlow.js Initialization
 
----
+**File: `vite.config.ts`**
 
-## Phase 1: Redesign Onboarding Flow
+Update Vite configuration to properly handle TensorFlow.js CommonJS dependencies:
+- Add CommonJS compatibility for TensorFlow dependencies
+- Configure `optimizeDeps.include` to pre-bundle TensorFlow packages
+- Add `esbuildOptions` to handle CommonJS modules
 
-### New Onboarding Steps
+**File: `src/hooks/usePoseDetection.ts`**
 
-Replace the 4-step sprint-focused flow with a gym-focused flow:
+Make the initialization more robust:
+- Add fallback backend selection (WebGL -> CPU)
+- Add better error handling with specific error messages
+- Ensure proper async/await handling for dynamic imports
+- Add a retry mechanism if initial load fails
 
-**Step 1: Fitness Goal**
-- Build Muscle (Hypertrophy)
-- Lose Weight / Get Lean
-- Build Strength
-- General Fitness
+### Part 2: Fix Canvas Overlay Positioning
 
-**Step 2: Experience Level**
-- Beginner (0-1 year)
-- Intermediate (1-3 years)
-- Advanced (3+ years)
+**File: `src/pages/Analysis.tsx`**
 
-**Step 3: Training Frequency**
-- 2-3 days per week
-- 4-5 days per week
-- 6 days per week
+Ensure the skeleton overlay displays correctly on the webcam:
+- The canvas dimensions need to match the video element dynamically
+- Add a `ResizeObserver` to update canvas size when video loads
+- Fix the `pose-canvas` CSS to properly scale with the video
 
-**Step 4: Available Equipment**
-- Full Gym
-- Home Gym (Dumbbells + Bench)
-- Minimal (Bodyweight + Resistance Bands)
+**File: `src/index.css`**
 
-### Files to Modify
-- `src/pages/Onboarding.tsx` - Replace steps with new questions
-- `src/context/GlobalContext.tsx` - Update user profile state (remove event/bestTime, add goal/experience/frequency/equipment)
+Verify the `.pose-canvas` styles properly overlay the webcam feed with correct scaling.
 
----
+### Part 3: Add Rep Counting with Optimal Angles
 
-## Phase 2: Expand Program Generator for Gym Workouts
+**New File: `src/lib/repCounter.ts`**
 
-### New Program Structure
+Create a rep counting system that tracks:
+- Exercise-specific joint angles for "top" and "bottom" of movement
+- State machine: `idle` -> `descending` -> `bottom` -> `ascending` -> `top` -> rep complete
+- Optimal angle ranges per exercise
 
-Replace sprint periodization with gym training splits:
+**Angle definitions for key exercises:**
 
-**Beginner Programs**
-- Full Body 3x/week
+| Exercise | Joint | Bottom Angle | Top Angle |
+|----------|-------|--------------|-----------|
+| Squat | Knee | 70-90 degrees | 160-180 degrees |
+| Deadlift | Hip | 80-100 degrees | 170-180 degrees |
+| Bench Press | Elbow | 80-100 degrees | 160-180 degrees |
+| Overhead Press | Elbow | 80-100 degrees | 170-180 degrees |
+| Bicep Curl | Elbow | 40-60 degrees | 150-170 degrees |
+| Lunge | Front Knee | 80-100 degrees | 160-180 degrees |
+| Push-up | Elbow | 80-100 degrees | 160-180 degrees |
+| Lat Pulldown | Elbow | 40-60 degrees | 140-160 degrees |
 
-**Intermediate Programs**
-- Upper/Lower 4x/week
-- Push/Pull/Legs 6x/week
+**File: `src/hooks/usePoseDetection.ts`**
 
-**Session Types**
-- Push Day (Chest, Shoulders, Triceps)
-- Pull Day (Back, Biceps)
-- Leg Day (Quads, Hamstrings, Glutes)
-- Upper Body
-- Lower Body
-- Full Body
+Integrate rep counting:
+- Add `repCount` to the return value
+- Track movement phase based on angle thresholds
+- Fire rep completion when full range of motion detected
 
-### New Exercise Library
+**File: `src/pages/Analysis.tsx`**
 
-Expand from 7 exercises to 50+ gym exercises organized by muscle group:
-
-**Chest**: Bench Press, Incline Press, Dumbbell Fly, Push-ups, Cable Crossover
-**Back**: Lat Pulldown, Barbell Row, Dumbbell Row, Pull-ups, Deadlift
-**Shoulders**: Overhead Press, Lateral Raise, Face Pulls, Front Raise
-**Arms**: Bicep Curls, Tricep Dips, Hammer Curls, Skull Crushers
-**Legs**: Squat, Leg Press, Romanian Deadlift, Lunges, Leg Curl, Leg Extension, Calf Raise
-**Core**: Plank, Russian Twist, Cable Crunch, Hanging Leg Raise
-
-### Files to Modify
-- `src/lib/programGenerator.ts` - Complete rewrite with gym-focused logic
-- Create `src/lib/exerciseLibrary.ts` - Centralized exercise database with muscle groups, equipment, difficulty
+Display rep counter:
+- Show current rep count prominently on screen
+- Visual feedback when rep is completed (flash effect)
+- Display current joint angle for the selected exercise
 
 ---
 
-## Phase 3: Enhanced Exercise Coaching & Form Analysis
+## Implementation Details
 
-### Expand Supported Exercises for Analysis
+### Vite Config Changes
 
-Add form rules for common gym exercises:
-
-**Push Exercises**
-- Bench Press: Bar path, elbow angle, shoulder blade retraction
-- Overhead Press: Core bracing, bar path, full lockout
-
-**Pull Exercises**
-- Barbell Row: Back angle, rowing to hips, no momentum
-- Lat Pulldown: Full stretch, squeeze at bottom, no swinging
-
-**Leg Exercises**
-- Squat (enhanced): Depth, knee tracking, hip hinge, bar position
-- Deadlift: Neutral spine, hip hinge, bar path close to body
-- Lunges (enhanced): Knee over ankle, torso upright, step length
-
-**Core Exercises**
-- Plank: Neutral spine, no hip sag, shoulder alignment
-
-### Files to Modify
-- `src/lib/exerciseRules.ts` - Add rules for 15-20 key compound movements
-- Update `ExerciseType` type with new exercises
-
----
-
-## Phase 4: Session Progress Tracking
-
-### Add Exercise Completion State
-
-Allow marking individual exercises as complete with logged data:
-- Sets completed
-- Reps performed
-- Weight used (optional)
-- Perceived difficulty (Easy/Moderate/Hard)
-
-### Session Completion Flow
-
-- Mark exercises complete individually via checkmark button
-- "Complete Session" button marks entire session done
-- Show session summary with total volume
-
-### Track Progress Over Time
-
-- Store completed sessions in context/localStorage
-- Show completed sessions with visual indicator (green checkmark)
-- Calculate weekly completion percentage
-
-### Files to Modify
-- `src/context/GlobalContext.tsx` - Add `completedExercises` state and `markExerciseComplete` action
-- `src/pages/Session.tsx` - Add completion UI for exercises
-- `src/lib/programGenerator.ts` - Add `loggedSets`, `loggedReps`, `loggedWeight` to Exercise type
-
----
-
-## Phase 5: Update UI Copy & Branding
-
-### Dashboard Updates
-- Change "20-Week Plan" to "Your Training Plan"
-- Update tagline from "AI-powered movement analysis for athletes" to "AI-powered form coaching for your workouts"
-- Replace sprint-specific icons
-
-### Remove Sprint References
-- Remove "offseason", "preComp", etc. stage labels
-- Remove pace/tempo terminology
-- Remove distance-based targets
-
-### Files to Modify
-- `src/pages/Index.tsx` - Update copy and feature descriptions
-- `src/pages/Program.tsx` - Update week labels
-- `src/pages/Analysis.tsx` - Expand exercise selector
-
----
-
-## Implementation Order
-
-1. **GlobalContext.tsx** - Update user profile state first
-2. **Onboarding.tsx** - New onboarding flow
-3. **programGenerator.ts + exerciseLibrary.ts** - New program logic
-4. **exerciseRules.ts** - Enhanced form analysis rules
-5. **Session.tsx** - Progress tracking UI
-6. **Index.tsx + Program.tsx + Analysis.tsx** - UI updates
-
----
-
-## Technical Notes
-
-### State Changes in GlobalContext
-
-Remove:
-- `event: number`
-- `bestTime: number`
-
-Add:
 ```typescript
-fitnessGoal: 'muscle' | 'weight-loss' | 'strength' | 'general';
-experienceLevel: 'beginner' | 'intermediate' | 'advanced';
-trainingDays: 2 | 3 | 4 | 5 | 6;
-equipment: 'full-gym' | 'home-gym' | 'minimal';
-completedSessions: Record<string, boolean>;
-exerciseLogs: Record<string, ExerciseLog>;
+optimizeDeps: {
+  include: [
+    '@tensorflow/tfjs',
+    '@tensorflow/tfjs-core',
+    '@tensorflow/tfjs-backend-webgl',
+    '@tensorflow-models/pose-detection',
+  ],
+  esbuildOptions: {
+    define: {
+      global: 'globalThis',
+    },
+  },
+},
 ```
 
-### Program Generator Changes
+### Rep Counter State Machine
 
-The new generator will:
-1. Select appropriate split based on training days
-2. Generate 8-12 week program (more realistic for gym users)
-3. Include progressive overload hints
-4. Match exercises to available equipment
+```text
+           +-------+
+           | IDLE  |
+           +---+---+
+               |
+               v (angle decreasing past threshold)
+        +------+------+
+        | DESCENDING  |
+        +------+------+
+               |
+               v (angle reaches bottom range)
+        +------+------+
+        |   BOTTOM    |
+        +------+------+
+               |
+               v (angle increasing)
+        +------+------+
+        |  ASCENDING  |
+        +------+------+
+               |
+               v (angle reaches top range)
+        +------+------+
+        |    TOP      +-----> Rep Counted!
+        +------+------+
+               |
+               v
+           +---+---+
+           | IDLE  | (ready for next rep)
+           +-------+
+```
 
-### LocalStorage Persistence
+### Exercise Angle Configurations
 
-Add persistence for:
-- User profile
-- Program state
-- Completed sessions
-- Exercise logs
+Each exercise will have a configuration object:
+
+```typescript
+interface ExerciseConfig {
+  primaryJoints: {
+    point1: string; // shoulder
+    point2: string; // elbow (vertex)
+    point3: string; // wrist
+  };
+  bottomAngleRange: [number, number]; // [min, max]
+  topAngleRange: [number, number];
+  repDirection: 'down-up' | 'up-down'; // squat vs overhead press
+}
+```
+
+---
+
+## Files to Modify
+
+1. **`vite.config.ts`** - Fix CommonJS compatibility for TensorFlow
+2. **`src/hooks/usePoseDetection.ts`** - Robust initialization + rep counting
+3. **`src/lib/repCounter.ts`** (new) - Rep counting logic with angle tracking
+4. **`src/pages/Analysis.tsx`** - Display rep count and current angles
+5. **`src/lib/exerciseRules.ts`** - Add optimal angle constants per exercise
+
+---
+
+## Testing Checklist
+
+After implementation:
+- Camera starts without "Failed to initialize" error
+- Skeleton overlay appears on webcam feed
+- Selecting different exercises changes the form rules
+- Rep counter increments when completing full range of motion
+- Form feedback appears based on exercise-specific rules
 
