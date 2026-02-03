@@ -17,6 +17,9 @@ export default defineConfig(({ mode }) => ({
       "@": path.resolve(__dirname, "./src"),
     },
   },
+  define: {
+    global: 'globalThis',
+  },
   build: {
     sourcemap: mode === 'development',
     rollupOptions: {
@@ -32,6 +35,17 @@ export default defineConfig(({ mode }) => ({
     },
   },
   optimizeDeps: {
+    include: [
+      '@tensorflow/tfjs',
+      '@tensorflow/tfjs-core',
+      '@tensorflow/tfjs-backend-webgl',
+      '@tensorflow-models/pose-detection',
+    ],
     exclude: ['@tensorflow/tfjs-backend-webgpu'],
+    esbuildOptions: {
+      define: {
+        global: 'globalThis',
+      },
+    },
   },
 }));
