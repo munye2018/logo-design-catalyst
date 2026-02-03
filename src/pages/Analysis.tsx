@@ -3,9 +3,10 @@ import { useParams, useNavigate } from 'react-router-dom';
 import Webcam from 'react-webcam';
 import { useGlobalContext } from '@/context/GlobalContext';
 import { usePoseDetection } from '@/hooks/usePoseDetection';
+import { audioFeedback } from '@/lib/audioFeedback';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { ArrowLeft, Camera, CameraOff, AlertCircle, CheckCircle, Info, RotateCcw } from 'lucide-react';
+import { ArrowLeft, Camera, CameraOff, AlertCircle, CheckCircle, Info, RotateCcw, Volume2, VolumeX } from 'lucide-react';
 import { analyzeMovement, getExerciseType, getAnalyzableExercises, type ExerciseType } from '@/lib/exerciseRules';
 import { exerciseRepConfigs } from '@/lib/repCounter';
 
@@ -22,6 +23,14 @@ export default function Analysis() {
   const [selectedExercise, setSelectedExercise] = useState<ExerciseType>('squat');
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [repFlash, setRepFlash] = useState(false);
+  const [audioEnabled, setAudioEnabled] = useState(true);
+
+  // Handle rep completion with audio
+  const handleRepComplete = useCallback(() => {
+    if (audioEnabled) {
+      audioFeedback.playRepComplete();
+    }
+  }, [audioEnabled]);
 
   const session = program?.[currentWeek]?.sessions[0];
   const exercises = session?.exercises || [];
@@ -40,7 +49,17 @@ export default function Analysis() {
     canvasRef,
     enabled: cameraEnabled,
     exerciseType: selectedExercise,
+    onRepComplete: handleRepComplete,
   });
+
+  // Toggle audio feedback
+  const handleAudioToggle = useCallback(() => {
+    setAudioEnabled((prev) => {
+      const newValue = !prev;
+      audioFeedback.setEnabled(newValue);
+      return newValue;
+    });
+  }, []);
 
   // Flash effect when rep is counted
   useEffect(() => {
@@ -183,8 +202,21 @@ export default function Analysis() {
               <Button
                 variant="outline"
                 size="sm"
+                onClick={handleAudioToggle}
+                className="ml-2"
+                title={audioEnabled ? 'Mute audio' : 'Enable audio'}
+              >
+                {audioEnabled ? (
+                  <Volume2 className="w-4 h-4" />
+                ) : (
+                  <VolumeX className="w-4 h-4" />
+                )}
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
                 onClick={resetReps}
-                className="ml-4"
+                className="ml-2"
               >
                 <RotateCcw className="w-4 h-4 mr-1" />
                 Reset

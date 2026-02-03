@@ -12,6 +12,7 @@ interface UsePoseDetectionProps {
   canvasRef: React.RefObject<HTMLCanvasElement | null>;
   enabled: boolean;
   exerciseType?: ExerciseType;
+  onRepComplete?: () => void;
 }
 
 interface UsePoseDetectionReturn {
@@ -48,6 +49,7 @@ export function usePoseDetection({
   canvasRef,
   enabled,
   exerciseType = 'squat',
+  onRepComplete,
 }: UsePoseDetectionProps): UsePoseDetectionReturn {
   const [isLoading, setIsLoading] = useState(false);
   const [isDetecting, setIsDetecting] = useState(false);
@@ -238,9 +240,15 @@ export function usePoseDetection({
 
         setKeypoints(convertedKeypoints);
 
-        // Update rep counter
+        // Update rep counter and check for new rep
+        const previousRepCount = repState.repCount;
         const newRepState = repCounter.update(convertedKeypoints);
         setRepState(newRepState);
+
+        // Trigger callback if rep was completed
+        if (newRepState.repCount > previousRepCount && onRepComplete) {
+          onRepComplete();
+        }
 
         // Draw skeleton
         const canvas = canvasRef.current;
