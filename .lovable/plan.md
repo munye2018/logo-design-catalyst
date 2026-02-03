@@ -1,205 +1,153 @@
 
 
-# Add Angle Progress Indicator and Workout History Tracker
+# Add Authentication & Cloud Sync
 
 ## Overview
 
-This plan adds two features to enhance the fitness tracking experience:
+This plan adds user authentication using Supabase with the following features:
 
-1. **Angle Progress Indicator**: A visual gauge showing how close the current joint angle is to the optimal range for the exercise
-2. **Workout History Tracker**: A dedicated page to view past workouts with detailed exercise logs
+1. **User Login/Signup**: Email/password authentication with a dedicated auth page
+2. **Cloud Sync**: Store workout data, preferences, and progress in Supabase so it syncs across devices (web + mobile)
+3. **Secure User Data**: Proper Row-Level Security (RLS) policies to protect user data
 
 ---
 
-## Part 1: Angle Progress Indicator
+## Part 1: Supabase Setup
 
-### What It Does
+### Database Schema
 
-During a workout, you'll see a visual gauge that shows:
-- Your current joint angle
-- The target "bottom" and "top" ranges for the exercise
-- Real-time progress as you move through the range of motion
-- Color-coded feedback (green when in optimal range, yellow/red when outside)
+Create the following tables to store user data in the cloud:
 
-### Technical Implementation
+**Table: `user_profiles`**
+Stores user fitness preferences (syncs with onboarding data)
 
-#### New Component: `src/components/AngleProgressIndicator.tsx`
+| Column | Type | Description |
+|--------|------|-------------|
+| id | uuid | Primary key, references auth.users |
+| fitness_goal | text | muscle, weight-loss, strength, general |
+| experience_level | text | beginner, intermediate, advanced |
+| training_days | integer | 2-6 |
+| equipment | text | full-gym, home-gym, minimal |
+| created_at | timestamp | Account creation |
+| updated_at | timestamp | Last profile update |
 
-A reusable component that displays:
-- A circular or linear progress gauge
-- Current angle value
-- Target range labels
-- Visual color changes based on position in range
+**Table: `workout_history`**
+Stores completed workout sessions
+
+| Column | Type | Description |
+|--------|------|-------------|
+| id | uuid | Primary key |
+| user_id | uuid | References auth.users |
+| session_name | text | Name of the workout session |
+| session_type | text | Type of session (push, pull, legs, etc.) |
+| week_number | integer | Which week in the program |
+| exercises | jsonb | Array of exercise details |
+| total_volume | integer | Total volume (sets x reps x weight) |
+| duration | integer | Session duration in minutes |
+| completed_at | timestamp | When workout was completed |
+
+**Table: `user_programs`**
+Stores the generated training program
+
+| Column | Type | Description |
+|--------|------|-------------|
+| id | uuid | Primary key |
+| user_id | uuid | References auth.users |
+| program_data | jsonb | The full 8-week program |
+| current_week | integer | Current week in program |
+| completed_sessions | jsonb | Map of completed session keys |
+| created_at | timestamp | When program was generated |
+
+---
+
+## Part 2: Authentication Flow
+
+### New File: `src/integrations/supabase/client.ts`
+
+Initialize Supabase client with project credentials.
+
+### New File: `src/contexts/AuthContext.tsx`
+
+Create an authentication context that:
+- Manages user session state
+- Provides login, signup, logout functions
+- Handles auth state changes
+- Loads user profile data on login
+
+### New File: `src/pages/Auth.tsx`
+
+A dedicated auth page with:
+- Email/password login form
+- Email/password signup form
+- Toggle between login and signup modes
+- Form validation with proper error handling
+- Loading states during authentication
+- Redirect to home after successful auth
+
+---
+
+## Part 3: Data Sync Layer
+
+### New File: `src/lib/syncService.ts`
+
+A service that syncs local data with Supabase:
 
 ```text
-Design:
-  +--------------------------------------------+
-  |  BOTTOM ◄========[●]============► TOP      |
-  |   70°              115°              180°  |
-  |          ░░░░░░███████████░░░░░░           |
-  |                                            |
-  |   Status: In Range ✓  |  Target: 70-100°  |
-  +--------------------------------------------+
+SYNC STRATEGY:
+1. On login: Pull user data from Supabase, merge with local data
+2. On data change: Push updates to Supabase (debounced)
+3. On logout: Clear local data, keep cloud data
+4. Offline support: Use localStorage as cache, sync when online
 ```
 
-The indicator calculates:
-- `progress = (currentAngle - minAngle) / (maxAngle - minAngle) * 100`
-- Highlight zones: Bottom range (contracted), Top range (extended)
-- Color: Green when in target zone, yellow approaching, red outside
+Key functions:
+- `syncUserProfile()`: Sync fitness preferences
+- `syncWorkoutHistory()`: Sync completed workouts
+- `syncProgram()`: Sync current program and progress
+- `pullFromCloud()`: Download all user data on login
+- `pushToCloud()`: Upload changes to Supabase
 
-#### Modify: `src/pages/Analysis.tsx`
+### Modify: `src/context/GlobalContext.tsx`
 
-Replace the simple angle text display with the new progress indicator:
-- Show above or below the rep counter
-- Update in real-time with the pose detection
-- Animate smoothly between angle readings
-
-#### Modify: `src/lib/repCounter.ts`
-
-Export additional helper info:
-- `getAngleProgress(currentAngle, config)`: Returns percentage and zone info
-- `isInOptimalRange(currentAngle, phase)`: Boolean for form feedback
+Update to integrate with sync service:
+- Add `user` state from auth context
+- After profile changes, trigger cloud sync
+- After workout completion, sync to cloud
+- Load cloud data on initial auth
 
 ---
 
-## Part 2: Workout History Tracker
+## Part 4: Protected Routes
 
-### What It Does
+### New File: `src/components/ProtectedRoute.tsx`
 
-A new page that shows:
-- Calendar view of past workout days
-- List of completed sessions with dates
-- Detailed logs for each exercise (sets, reps, weight, difficulty)
-- Summary statistics (total workouts, volume trends)
+A wrapper component that:
+- Checks if user is authenticated
+- Redirects to /auth if not logged in
+- Shows loading spinner while checking auth
 
-### Data Structure
+### Modify: `src/App.tsx`
 
-The existing `GlobalContext` already tracks:
-- `completedSessions`: Record of which sessions are done
-- `exerciseLogs`: Details of each exercise completion
-
-We need to add:
-- `workoutHistory`: Array of completed workout entries with timestamps
-
-#### New Type: `WorkoutHistoryEntry`
-
-```typescript
-interface WorkoutHistoryEntry {
-  id: string;
-  date: number; // timestamp
-  weekNumber: number;
-  sessionName: string;
-  sessionType: SessionType;
-  exercises: Array<{
-    name: string;
-    sets: number;
-    reps: number;
-    weight?: number;
-    difficulty: 'easy' | 'moderate' | 'hard';
-  }>;
-  totalVolume: number; // sets × reps × weight
-  duration?: number; // if tracked
-}
-```
-
-### Files to Create/Modify
-
-#### New File: `src/pages/History.tsx`
-
-Main history page with:
-- Header with "Workout History" title
-- Summary cards (total workouts, current streak, volume this week)
-- List of workout entries sorted by date (most recent first)
-- Each entry expandable to show exercise details
-- Empty state when no history
-
-#### New File: `src/components/WorkoutHistoryCard.tsx`
-
-Card component for each workout entry:
-- Date and session name
-- Quick stats (exercises completed, estimated volume)
-- Expandable details section
-- Difficulty rating visualization
-
-#### Modify: `src/context/GlobalContext.tsx`
-
-Add workout history state and functions:
-- `workoutHistory: WorkoutHistoryEntry[]`
-- `addWorkoutToHistory(entry: WorkoutHistoryEntry): void`
-- `getWorkoutStats(): { totalWorkouts, currentStreak, weeklyVolume }`
-- LocalStorage persistence with key `aurora_workout_history`
-
-Update `markSessionComplete` to also create a history entry.
-
-#### Modify: `src/App.tsx`
-
-Add new route: `/history`
-
-#### Modify: `src/pages/Program.tsx` (or Index.tsx)
-
-Add navigation to History page (button or nav link).
+- Add `/auth` route
+- Wrap relevant routes with ProtectedRoute
+- Allow `/` to show either welcome or dashboard based on auth
 
 ---
 
-## Implementation Details
+## Part 5: UI Updates
 
-### Angle Progress Indicator Logic
+### Modify: `src/pages/Index.tsx`
 
-```typescript
-function calculateAngleProgress(
-  currentAngle: number,
-  bottomRange: [number, number],
-  topRange: [number, number]
-): {
-  progress: number; // 0-100
-  zone: 'bottom' | 'middle' | 'top' | 'outside';
-  inOptimalZone: boolean;
-} {
-  const minAngle = bottomRange[0];
-  const maxAngle = topRange[1];
-  const range = maxAngle - minAngle;
-  
-  const progress = ((currentAngle - minAngle) / range) * 100;
-  
-  const inBottom = currentAngle >= bottomRange[0] && currentAngle <= bottomRange[1];
-  const inTop = currentAngle >= topRange[0] && currentAngle <= topRange[1];
-  
-  return {
-    progress: Math.max(0, Math.min(100, progress)),
-    zone: inBottom ? 'bottom' : inTop ? 'top' : progress < 50 ? 'middle' : 'outside',
-    inOptimalZone: inBottom || inTop,
-  };
-}
-```
+Add user profile section to header:
+- Show user email or avatar
+- Logout button
+- Link to settings/profile
 
-### History Page Layout
+### Modify: `src/pages/Onboarding.tsx`
 
-```text
-+----------------------------------+
-|  ◄ Workout History               |
-+----------------------------------+
-|                                  |
-|  [Total: 12] [Streak: 5] [Vol]  |
-|                                  |
-|  +----------------------------+  |
-|  | Today - Push Day           |  |
-|  | 6 exercises • 42 sets      |  |
-|  | ▼ Expand                   |  |
-|  +----------------------------+  |
-|                                  |
-|  +----------------------------+  |
-|  | Yesterday - Pull Day       |  |
-|  | 5 exercises • 35 sets      |  |
-|  | ▼ Expand                   |  |
-|  +----------------------------+  |
-|                                  |
-|  +----------------------------+  |
-|  | 2 days ago - Leg Day       |  |
-|  | 7 exercises • 48 sets      |  |
-|  | ▼ Expand                   |  |
-|  +----------------------------+  |
-+----------------------------------+
-```
+After completing onboarding:
+- Save profile to Supabase if logged in
+- Prompt login to sync data across devices
 
 ---
 
@@ -207,24 +155,64 @@ function calculateAngleProgress(
 
 | File | Action | Purpose |
 |------|--------|---------|
-| `src/components/AngleProgressIndicator.tsx` | Create | Visual angle gauge component |
-| `src/pages/History.tsx` | Create | Workout history page |
-| `src/components/WorkoutHistoryCard.tsx` | Create | Individual workout card component |
-| `src/pages/Analysis.tsx` | Modify | Add angle progress indicator |
-| `src/context/GlobalContext.tsx` | Modify | Add history state and functions |
-| `src/App.tsx` | Modify | Add /history route |
-| `src/pages/Program.tsx` | Modify | Add History navigation button |
+| `supabase/migrations/create_user_tables.sql` | Create | Database schema |
+| `src/integrations/supabase/client.ts` | Create | Supabase client |
+| `src/contexts/AuthContext.tsx` | Create | Auth state management |
+| `src/pages/Auth.tsx` | Create | Login/signup page |
+| `src/lib/syncService.ts` | Create | Cloud sync logic |
+| `src/components/ProtectedRoute.tsx` | Create | Route protection |
+| `src/context/GlobalContext.tsx` | Modify | Integrate sync |
+| `src/App.tsx` | Modify | Add auth route |
+| `src/pages/Index.tsx` | Modify | Add user UI |
+
+---
+
+## Security Considerations
+
+1. **Row-Level Security (RLS)**: All tables will have RLS policies so users can only access their own data
+2. **Input Validation**: Email and password validation on the auth form
+3. **Secure Session Handling**: Using Supabase's built-in session management with proper token refresh
+4. **No Sensitive Data in Console**: Production builds won't log auth details
+
+---
+
+## Sync Flow Diagram
+
+```text
++-------------------+      +-------------------+      +-------------------+
+|   Mobile App      |      |   Supabase Cloud  |      |   Web App         |
++-------------------+      +-------------------+      +-------------------+
+        |                          |                          |
+        |  Login (same account)    |                          |
+        |------------------------->|                          |
+        |                          |                          |
+        |  Workout completed       |                          |
+        |------------------------->|                          |
+        |                          |                          |
+        |                          |   Login (same account)   |
+        |                          |<-------------------------|
+        |                          |                          |
+        |                          |   Pull workout history   |
+        |                          |<-------------------------|
+        |                          |                          |
+        |                          |   Return synced data     |
+        |                          |------------------------->|
+        |                          |                          |
+        v                          v                          v
+     
+User sees same workout history on both devices!
+```
 
 ---
 
 ## Testing Checklist
 
 After implementation:
-- [ ] Angle indicator updates smoothly during exercise
-- [ ] Color changes when entering/exiting optimal ranges
-- [ ] Completing a session adds entry to history
-- [ ] History page shows all past workouts
-- [ ] Workout cards expand to show exercise details
-- [ ] History persists after page refresh
-- [ ] Empty state shows when no history exists
+- [ ] Can sign up with email/password
+- [ ] Can login with existing account
+- [ ] Profile data syncs to cloud after onboarding
+- [ ] Workout history appears on both web and mobile
+- [ ] Logging out clears local session
+- [ ] Protected routes redirect to login
+- [ ] Error messages display for invalid credentials
 
