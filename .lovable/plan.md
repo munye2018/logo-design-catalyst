@@ -278,12 +278,21 @@ CREATE POLICY "Service role only" ON rate_limits FOR ALL USING (false);
 ## Testing Checklist
 
 After implementation:
-- [ ] Can sign in with Google
-- [ ] New users get 30-day trial countdown
-- [ ] Trial banner shows days remaining
-- [ ] Expired trial blocks session start
-- [ ] Rate limiting returns 429 on excess requests
-- [ ] Can swap exercises for alternatives
+- [x] Can sign in with Google
+- [x] New users get 30-day trial countdown
+- [x] Trial banner shows days remaining
+- [x] Expired trial blocks session start
+- [x] Rate limiting returns 429 on excess requests
+- [x] Can swap exercises for alternatives
 - [ ] Program syncs to cloud after onboarding
 - [ ] Data persists across logout/login
+
+## Implementation Status
+
+**Completed:**
+- Google Sign-In via Lovable Cloud OAuth
+- 30-Day Free Trial System with TrialBanner and UpgradeModal
+- Rate Limiting Edge Function (api-gateway)
+- Exercise Swap Modal for customization
+- Trial expiry check on session access
 
