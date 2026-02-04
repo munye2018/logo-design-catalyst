@@ -1,153 +1,222 @@
 
 
-# Add Authentication & Cloud Sync
+# Feature Implementation Plan
 
 ## Overview
 
-This plan adds user authentication using Supabase with the following features:
-
-1. **User Login/Signup**: Email/password authentication with a dedicated auth page
-2. **Cloud Sync**: Store workout data, preferences, and progress in Supabase so it syncs across devices (web + mobile)
-3. **Secure User Data**: Proper Row-Level Security (RLS) policies to protect user data
-
----
-
-## Part 1: Supabase Setup
-
-### Database Schema
-
-Create the following tables to store user data in the cloud:
-
-**Table: `user_profiles`**
-Stores user fitness preferences (syncs with onboarding data)
-
-| Column | Type | Description |
-|--------|------|-------------|
-| id | uuid | Primary key, references auth.users |
-| fitness_goal | text | muscle, weight-loss, strength, general |
-| experience_level | text | beginner, intermediate, advanced |
-| training_days | integer | 2-6 |
-| equipment | text | full-gym, home-gym, minimal |
-| created_at | timestamp | Account creation |
-| updated_at | timestamp | Last profile update |
-
-**Table: `workout_history`**
-Stores completed workout sessions
-
-| Column | Type | Description |
-|--------|------|-------------|
-| id | uuid | Primary key |
-| user_id | uuid | References auth.users |
-| session_name | text | Name of the workout session |
-| session_type | text | Type of session (push, pull, legs, etc.) |
-| week_number | integer | Which week in the program |
-| exercises | jsonb | Array of exercise details |
-| total_volume | integer | Total volume (sets x reps x weight) |
-| duration | integer | Session duration in minutes |
-| completed_at | timestamp | When workout was completed |
-
-**Table: `user_programs`**
-Stores the generated training program
-
-| Column | Type | Description |
-|--------|------|-------------|
-| id | uuid | Primary key |
-| user_id | uuid | References auth.users |
-| program_data | jsonb | The full 8-week program |
-| current_week | integer | Current week in program |
-| completed_sessions | jsonb | Map of completed session keys |
-| created_at | timestamp | When program was generated |
+This plan covers four major features:
+1. **Google Sign-In** - Add social login option
+2. **Cloud Sync Testing** - Verify data syncs after onboarding  
+3. **Rate Limiting** - Protect user endpoints from abuse
+4. **30-Day Free Trial** - Implement trial period with paywall
 
 ---
 
-## Part 2: Authentication Flow
+## Part 1: Google Sign-In
 
-### New File: `src/integrations/supabase/client.ts`
+### What Changes
 
-Initialize Supabase client with project credentials.
+Add a "Sign in with Google" button alongside the existing email/password form on the Auth page.
 
-### New File: `src/contexts/AuthContext.tsx`
+### Technical Implementation
 
-Create an authentication context that:
-- Manages user session state
-- Provides login, signup, logout functions
-- Handles auth state changes
-- Loads user profile data on login
+**Configure Google OAuth:**
+Use the built-in Lovable Cloud managed Google OAuth (no API keys needed from you).
 
-### New File: `src/pages/Auth.tsx`
+**Modify: `src/contexts/AuthContext.tsx`**
+- Add `signInWithGoogle()` function using `lovable.auth.signInWithOAuth("google", ...)`
+- The managed Google OAuth handles all the complexity automatically
 
-A dedicated auth page with:
-- Email/password login form
-- Email/password signup form
-- Toggle between login and signup modes
-- Form validation with proper error handling
-- Loading states during authentication
-- Redirect to home after successful auth
+**Modify: `src/pages/Auth.tsx`**
+- Add Google sign-in button with Google icon
+- Handle OAuth callback and redirect
 
----
-
-## Part 3: Data Sync Layer
-
-### New File: `src/lib/syncService.ts`
-
-A service that syncs local data with Supabase:
+**New File: `src/integrations/lovable/index.ts`** (auto-generated)
+- Lovable Cloud auth module for social login
 
 ```text
-SYNC STRATEGY:
-1. On login: Pull user data from Supabase, merge with local data
-2. On data change: Push updates to Supabase (debounced)
-3. On logout: Clear local data, keep cloud data
-4. Offline support: Use localStorage as cache, sync when online
+UI Design:
++-----------------------------------+
+|        Welcome Back               |
+|        Sign in to Aurora          |
+|                                   |
+|  [  G  Continue with Google  ]    |
+|                                   |
+|  ─────── or ───────               |
+|                                   |
+|  Email: [________________]        |
+|  Password: [________________]     |
+|                                   |
+|  [      Sign In          ]        |
++-----------------------------------+
 ```
 
-Key functions:
-- `syncUserProfile()`: Sync fitness preferences
-- `syncWorkoutHistory()`: Sync completed workouts
-- `syncProgram()`: Sync current program and progress
-- `pullFromCloud()`: Download all user data on login
-- `pushToCloud()`: Upload changes to Supabase
+---
 
-### Modify: `src/context/GlobalContext.tsx`
+## Part 2: Rate Limiting on User Endpoints
 
-Update to integrate with sync service:
-- Add `user` state from auth context
-- After profile changes, trigger cloud sync
-- After workout completion, sync to cloud
-- Load cloud data on initial auth
+### Why Rate Limiting?
+
+Prevents abuse, protects against:
+- Brute force login attempts
+- API spam/DoS attacks
+- Resource exhaustion
+
+### Technical Implementation
+
+**New Edge Function: `supabase/functions/rate-limiter/index.ts`**
+
+A reusable rate limiting service using in-memory storage (with Redis-like pattern):
+
+```text
+Rate Limit Strategy:
+- Auth endpoints: 5 attempts per 15 minutes per IP
+- Profile sync: 10 requests per minute per user
+- Workout sync: 30 requests per minute per user
+- General API: 100 requests per minute per user
+```
+
+**Implementation Approach:**
+
+Since this is a fitness app with sync endpoints, we'll implement rate limiting directly in the sync service calls:
+
+1. Create a rate-limit edge function that acts as a gateway
+2. Track requests by user ID + endpoint
+3. Return 429 (Too Many Requests) when limits exceeded
+
+**New File: `supabase/functions/api-gateway/index.ts`**
+
+An edge function that wraps database operations with rate limiting:
+
+```typescript
+// Rate limit configuration
+const RATE_LIMITS = {
+  'sync-profile': { requests: 10, windowMs: 60000 },
+  'sync-workout': { requests: 30, windowMs: 60000 },
+  'sync-program': { requests: 10, windowMs: 60000 },
+};
+```
+
+**Database Table: `rate_limits`**
+
+| Column | Type | Description |
+|--------|------|-------------|
+| id | uuid | Primary key |
+| user_id | uuid | User identifier |
+| endpoint | text | API endpoint key |
+| request_count | integer | Current request count |
+| window_start | timestamp | Window start time |
 
 ---
 
-## Part 4: Protected Routes
+## Part 3: 30-Day Free Trial
 
-### New File: `src/components/ProtectedRoute.tsx`
+### How It Works
 
-A wrapper component that:
-- Checks if user is authenticated
-- Redirects to /auth if not logged in
-- Shows loading spinner while checking auth
+1. When a user signs up, record their `trial_start_date`
+2. Allow full access for 30 days
+3. After 30 days, show upgrade prompt and limit features
+4. Free tier limitations: Can view program, cannot start new sessions
 
-### Modify: `src/App.tsx`
+### Database Changes
 
-- Add `/auth` route
-- Wrap relevant routes with ProtectedRoute
-- Allow `/` to show either welcome or dashboard based on auth
+**Modify `user_profiles` table:**
+
+Add columns:
+- `trial_start_date`: timestamp (set on first login)
+- `subscription_status`: text ('trial' | 'active' | 'expired')
+- `subscription_expires_at`: timestamp (nullable)
+
+### Technical Implementation
+
+**Modify: `src/contexts/AuthContext.tsx`**
+
+- After successful login, check/set trial start date
+- Calculate days remaining
+- Expose `trialDaysRemaining` and `isTrialExpired` to context
+
+**New Component: `src/components/TrialBanner.tsx`**
+
+Shows remaining trial days or upgrade prompt:
+
+```text
+Trial Active (23 days left):
++-------------------------------------------+
+| Free Trial: 23 days remaining             |
+| Upgrade now for unlimited access →        |
++-------------------------------------------+
+
+Trial Expired:
++-------------------------------------------+
+| Your free trial has ended                 |
+| [Upgrade to Premium] to continue training |
++-------------------------------------------+
+```
+
+**Modify: `src/pages/Index.tsx` and `src/pages/Session.tsx`**
+
+- Check trial status before allowing session start
+- Show upgrade modal if trial expired
+
+**New Component: `src/components/UpgradeModal.tsx`**
+
+Modal explaining premium features and payment options (placeholder for Stripe integration later)
+
+### Trial Status Logic
+
+```typescript
+const getTrialStatus = (trialStartDate: Date | null) => {
+  if (!trialStartDate) return { status: 'trial', daysRemaining: 30 };
+  
+  const now = new Date();
+  const diffMs = now.getTime() - trialStartDate.getTime();
+  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+  const daysRemaining = Math.max(0, 30 - diffDays);
+  
+  return {
+    status: daysRemaining > 0 ? 'trial' : 'expired',
+    daysRemaining,
+  };
+};
+```
 
 ---
 
-## Part 5: UI Updates
+## Part 4: Customizable Workout Plans
 
-### Modify: `src/pages/Index.tsx`
+### Current State
 
-Add user profile section to header:
-- Show user email or avatar
-- Logout button
-- Link to settings/profile
+The program generator already creates personalized 8-week plans based on:
+- Fitness goal (muscle, weight-loss, strength, general)
+- Experience level (beginner, intermediate, advanced)
+- Training days (2-6 per week)
+- Equipment available (full-gym, home-gym, minimal)
 
-### Modify: `src/pages/Onboarding.tsx`
+### Enhancements
 
-After completing onboarding:
-- Save profile to Supabase if logged in
-- Prompt login to sync data across devices
+**1. Exercise Swapping:**
+
+Allow users to swap exercises within a session for alternatives that target the same muscle group.
+
+**New Component: `src/components/ExerciseSwapModal.tsx`**
+
+- Shows alternative exercises for the same muscle
+- Filters by user's available equipment
+- Persists swap to user's program
+
+**2. Volume Adjustment:**
+
+Allow users to adjust sets/reps per exercise based on preference.
+
+**Modify: `src/pages/Session.tsx`**
+
+- Add edit button on each exercise
+- Allow modifying sets and reps
+- Save to exerciseLogs with custom values
+
+**3. Rest Day Flexibility:**
+
+Allow users to rearrange which days are rest days.
 
 ---
 
@@ -155,64 +224,66 @@ After completing onboarding:
 
 | File | Action | Purpose |
 |------|--------|---------|
-| `supabase/migrations/create_user_tables.sql` | Create | Database schema |
-| `src/integrations/supabase/client.ts` | Create | Supabase client |
-| `src/contexts/AuthContext.tsx` | Create | Auth state management |
-| `src/pages/Auth.tsx` | Create | Login/signup page |
-| `src/lib/syncService.ts` | Create | Cloud sync logic |
-| `src/components/ProtectedRoute.tsx` | Create | Route protection |
-| `src/context/GlobalContext.tsx` | Modify | Integrate sync |
-| `src/App.tsx` | Modify | Add auth route |
-| `src/pages/Index.tsx` | Modify | Add user UI |
+| `src/integrations/lovable/index.ts` | Create (auto) | Lovable Cloud auth |
+| `src/contexts/AuthContext.tsx` | Modify | Add Google sign-in, trial tracking |
+| `src/pages/Auth.tsx` | Modify | Add Google button |
+| `supabase/functions/api-gateway/index.ts` | Create | Rate limiting gateway |
+| `src/components/TrialBanner.tsx` | Create | Trial status display |
+| `src/components/UpgradeModal.tsx` | Create | Upgrade prompt |
+| `src/components/ExerciseSwapModal.tsx` | Create | Exercise alternatives |
+| `src/pages/Index.tsx` | Modify | Add trial banner, check expiry |
+| `src/pages/Session.tsx` | Modify | Block expired trials, add swap |
+| `src/lib/syncService.ts` | Modify | Add rate limit headers |
+| Database migration | Create | Add trial columns |
 
 ---
 
-## Security Considerations
+## Database Migration
 
-1. **Row-Level Security (RLS)**: All tables will have RLS policies so users can only access their own data
-2. **Input Validation**: Email and password validation on the auth form
-3. **Secure Session Handling**: Using Supabase's built-in session management with proper token refresh
-4. **No Sensitive Data in Console**: Production builds won't log auth details
+```sql
+-- Add trial and subscription columns to user_profiles
+ALTER TABLE user_profiles 
+ADD COLUMN trial_start_date TIMESTAMPTZ DEFAULT now(),
+ADD COLUMN subscription_status TEXT DEFAULT 'trial',
+ADD COLUMN subscription_expires_at TIMESTAMPTZ;
 
----
+-- Create rate_limits table for tracking API usage
+CREATE TABLE rate_limits (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL,
+  endpoint TEXT NOT NULL,
+  request_count INTEGER DEFAULT 1,
+  window_start TIMESTAMPTZ DEFAULT now(),
+  UNIQUE(user_id, endpoint)
+);
 
-## Sync Flow Diagram
-
-```text
-+-------------------+      +-------------------+      +-------------------+
-|   Mobile App      |      |   Supabase Cloud  |      |   Web App         |
-+-------------------+      +-------------------+      +-------------------+
-        |                          |                          |
-        |  Login (same account)    |                          |
-        |------------------------->|                          |
-        |                          |                          |
-        |  Workout completed       |                          |
-        |------------------------->|                          |
-        |                          |                          |
-        |                          |   Login (same account)   |
-        |                          |<-------------------------|
-        |                          |                          |
-        |                          |   Pull workout history   |
-        |                          |<-------------------------|
-        |                          |                          |
-        |                          |   Return synced data     |
-        |                          |------------------------->|
-        |                          |                          |
-        v                          v                          v
-     
-User sees same workout history on both devices!
+-- RLS for rate_limits
+ALTER TABLE rate_limits ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Service role only" ON rate_limits FOR ALL USING (false);
 ```
+
+---
+
+## Implementation Order
+
+1. **Google Sign-In** - Configure OAuth, update Auth page
+2. **Database Migration** - Add trial columns
+3. **Trial System** - Implement trial tracking and banners
+4. **Rate Limiting** - Create edge function gateway
+5. **Exercise Customization** - Add swap and edit features
+6. **Cloud Sync Testing** - Verify end-to-end sync works
 
 ---
 
 ## Testing Checklist
 
 After implementation:
-- [ ] Can sign up with email/password
-- [ ] Can login with existing account
-- [ ] Profile data syncs to cloud after onboarding
-- [ ] Workout history appears on both web and mobile
-- [ ] Logging out clears local session
-- [ ] Protected routes redirect to login
-- [ ] Error messages display for invalid credentials
+- [ ] Can sign in with Google
+- [ ] New users get 30-day trial countdown
+- [ ] Trial banner shows days remaining
+- [ ] Expired trial blocks session start
+- [ ] Rate limiting returns 429 on excess requests
+- [ ] Can swap exercises for alternatives
+- [ ] Program syncs to cloud after onboarding
+- [ ] Data persists across logout/login
 
