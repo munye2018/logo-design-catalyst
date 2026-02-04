@@ -1,19 +1,54 @@
+import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useGlobalContext } from '@/context/GlobalContext';
+import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { ArrowLeft, Camera, Check, Clock, Dumbbell } from 'lucide-react';
+import { UpgradeModal } from '@/components/UpgradeModal';
+import { ExerciseSwapModal } from '@/components/ExerciseSwapModal';
+import { ArrowLeft, Camera, Check, Clock, Dumbbell, ArrowLeftRight } from 'lucide-react';
 import { getExerciseType } from '@/lib/exerciseRules';
-import { getExerciseById } from '@/lib/exerciseLibrary';
+import { getExerciseById, type ExerciseDefinition } from '@/lib/exerciseLibrary';
 
 export default function Session() {
   const { sessionId } = useParams();
   const navigate = useNavigate();
-  const { program, currentWeek, markSessionComplete, logExercise, exerciseLogs } = useGlobalContext();
+  const { 
+    program, 
+    currentWeek, 
+    markSessionComplete, 
+    logExercise, 
+    exerciseLogs,
+    equipment,
+    swapExercise
+  } = useGlobalContext();
+  const { trialStatus } = useAuth();
+
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
+  const [swapModalExercise, setSwapModalExercise] = useState<{
+    exerciseId: string;
+    name: string;
+    sets: number;
+    reps: string;
+    index: number;
+  } | null>(null);
 
   const sessionIndex = parseInt(sessionId || '0');
   const currentWeekData = program?.[currentWeek];
   const session = currentWeekData?.sessions[sessionIndex];
+
+  // Check if trial expired - show modal and block session
+  if (trialStatus.status === 'expired') {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <UpgradeModal 
+          isOpen={true}
+          onClose={() => navigate('/')}
+          isTrialExpired={true}
+        />
+      </div>
+    );
+  }
 
   if (!session) {
     return (
@@ -48,6 +83,28 @@ export default function Session() {
   const isExerciseComplete = (exerciseIndex: number) => {
     const key = `${currentWeek}-${sessionIndex}-${exerciseIndex}`;
     return !!exerciseLogs[key];
+  };
+
+  const handleOpenSwapModal = (exercise: typeof session.exercises[0], index: number) => {
+    setSwapModalExercise({
+      exerciseId: exercise.exerciseId,
+      name: exercise.name,
+      sets: exercise.sets,
+      reps: exercise.reps,
+      index,
+    });
+  };
+
+  const handleSwapExercise = (newExercise: ExerciseDefinition) => {
+    if (swapModalExercise && swapExercise) {
+      swapExercise(
+        currentWeek,
+        sessionIndex,
+        swapModalExercise.index,
+        newExercise
+      );
+    }
+    setSwapModalExercise(null);
   };
 
   const completedCount = session.exercises.filter((_, idx) => isExerciseComplete(idx)).length;
@@ -121,6 +178,18 @@ export default function Session() {
                   </div>
 
                   <div className="flex gap-2 ml-4">
+                    {/* Swap Button */}
+                    {!isRest && exercise.exerciseId && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleOpenSwapModal(exercise, idx)}
+                        title="Swap exercise"
+                      >
+                        <ArrowLeftRight className="w-4 h-4" />
+                      </Button>
+                    )}
+                    
                     {canAnalyze && !isRest && (
                       <Button
                         variant="outline"
@@ -170,6 +239,23 @@ export default function Session() {
           </Card>
         )}
       </main>
+
+      {/* Upgrade Modal (for any blocked actions) */}
+      <UpgradeModal 
+        isOpen={showUpgradeModal}
+        onClose={() => setShowUpgradeModal(false)}
+      />
+
+      {/* Exercise Swap Modal */}
+      {swapModalExercise && (
+        <ExerciseSwapModal
+          isOpen={true}
+          onClose={() => setSwapModalExercise(null)}
+          currentExercise={swapModalExercise}
+          userEquipment={equipment}
+          onSwap={handleSwapExercise}
+        />
+      )}
     </div>
   );
 }

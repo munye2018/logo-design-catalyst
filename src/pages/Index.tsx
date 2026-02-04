@@ -1,8 +1,11 @@
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useGlobalContext } from '@/context/GlobalContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { TrialBanner } from '@/components/TrialBanner';
+import { UpgradeModal } from '@/components/UpgradeModal';
 import { Camera, Calendar, Dumbbell, Activity, LogIn, LogOut, User } from 'lucide-react';
 
 // Phase descriptions
@@ -16,7 +19,8 @@ const PHASE_LABELS: Record<string, string> = {
 export default function Index() {
   const navigate = useNavigate();
   const { program, onboardingComplete, currentWeek } = useGlobalContext();
-  const { user, signOut, loading } = useAuth();
+  const { user, signOut, loading, trialStatus } = useAuth();
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
 
   // If not onboarded, show welcome screen
   if (!onboardingComplete || !program) {
@@ -84,6 +88,15 @@ export default function Index() {
     await signOut();
   };
 
+  const handleStartSession = (sessionIndex: number) => {
+    // Check if trial has expired
+    if (trialStatus.status === 'expired') {
+      setShowUpgradeModal(true);
+      return;
+    }
+    navigate(`/session/${sessionIndex}`);
+  };
+
   return (
     <div className="min-h-screen bg-background">
       <header className="bg-card border-b border-border p-4">
@@ -117,6 +130,9 @@ export default function Index() {
       </header>
 
       <main className="max-w-4xl mx-auto p-4 space-y-6">
+        {/* Trial Banner */}
+        <TrialBanner onUpgrade={() => setShowUpgradeModal(true)} />
+
         {/* Sync Banner for non-authenticated users */}
         {!user && (
           <Card className="border-primary/20 bg-primary/5">
@@ -149,7 +165,7 @@ export default function Index() {
                     <h3 className="font-semibold text-lg">{todaySession.name}</h3>
                     <p className="text-muted-foreground">{todaySession.details}</p>
                   </div>
-                  <Button onClick={() => navigate(`/session/${todayIndex}`)}>
+                  <Button onClick={() => handleStartSession(todayIndex)}>
                     Start Session
                   </Button>
                 </div>
@@ -198,7 +214,7 @@ export default function Index() {
               {currentWeekData?.sessions.map((session, idx) => (
                 <button
                   key={session.id}
-                  onClick={() => navigate(`/session/${idx}`)}
+                  onClick={() => handleStartSession(idx)}
                   className={`p-2 rounded-lg text-center transition-colors ${
                     idx === todayIndex 
                       ? 'bg-primary text-primary-foreground' 
@@ -213,6 +229,13 @@ export default function Index() {
           </CardContent>
         </Card>
       </main>
+
+      {/* Upgrade Modal */}
+      <UpgradeModal 
+        isOpen={showUpgradeModal}
+        onClose={() => setShowUpgradeModal(false)}
+        isTrialExpired={trialStatus.status === 'expired'}
+      />
     </div>
   );
 }

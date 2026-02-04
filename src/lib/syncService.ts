@@ -9,6 +9,30 @@ import type {
   WeeklyProgram
 } from '@/context/GlobalContext';
 
+// Rate limit check function
+async function checkRateLimit(endpoint: string): Promise<{ allowed: boolean; remaining?: number }> {
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.access_token) {
+      return { allowed: true }; // Allow if not authenticated
+    }
+
+    const response = await supabase.functions.invoke('api-gateway/check', {
+      body: { endpoint },
+    });
+
+    if (response.error) {
+      logger.error('Rate limit check failed:', response.error);
+      return { allowed: true }; // Fail open
+    }
+
+    return response.data as { allowed: boolean; remaining?: number };
+  } catch (err) {
+    logger.error('Rate limit check error:', err);
+    return { allowed: true }; // Fail open on error
+  }
+}
+
 // Types for cloud data
 interface CloudUserProfile {
   fitness_goal: string;
@@ -45,6 +69,13 @@ export async function syncUserProfile(
   }
 ): Promise<boolean> {
   try {
+    // Check rate limit
+    const rateCheck = await checkRateLimit('sync-profile');
+    if (!rateCheck.allowed) {
+      logger.error('Rate limit exceeded for profile sync');
+      return false;
+    }
+
     const { error } = await supabase
       .from('user_profiles')
       .upsert({
@@ -75,6 +106,13 @@ export async function syncWorkoutEntry(
   entry: WorkoutHistoryEntry
 ): Promise<boolean> {
   try {
+    // Check rate limit
+    const rateCheck = await checkRateLimit('sync-workout');
+    if (!rateCheck.allowed) {
+      logger.error('Rate limit exceeded for workout sync');
+      return false;
+    }
+
     const { error } = await supabase
       .from('workout_history')
       .upsert({
@@ -110,6 +148,13 @@ export async function syncProgram(
   completedSessions: Record<string, boolean>
 ): Promise<boolean> {
   try {
+    // Check rate limit
+    const rateCheck = await checkRateLimit('sync-program');
+    if (!rateCheck.allowed) {
+      logger.error('Rate limit exceeded for program sync');
+      return false;
+    }
+
     const { error } = await supabase
       .from('user_programs')
       .upsert({
@@ -139,6 +184,13 @@ export async function pullFromCloud(userId: string): Promise<{
   program: CloudUserProgram | null;
 }> {
   try {
+    // Check rate limit
+    const rateCheck = await checkRateLimit('pull-data');
+    if (!rateCheck.allowed) {
+      logger.error('Rate limit exceeded for data pull');
+      return { profile: null, workoutHistory: [], program: null };
+    }
+
     // Fetch all data in parallel
     const [profileResult, workoutsResult, programResult] = await Promise.all([
       supabase.from('user_profiles').select('*').eq('user_id', userId).maybeSingle(),

@@ -10,6 +10,7 @@ import {
   isArray,
   trimWorkoutHistory 
 } from '@/lib/storage';
+import type { ExerciseDefinition } from '@/lib/exerciseLibrary';
 
 // Re-export Week as WeeklyProgram for syncService compatibility
 export type WeeklyProgram = Week;
@@ -103,6 +104,9 @@ interface GlobalContextProps {
   onboardingComplete: boolean;
   setOnboardingComplete: (complete: boolean) => void;
   resetProgress: () => void;
+  
+  // Exercise customization
+  swapExercise: (weekIndex: number, sessionIndex: number, exerciseIndex: number, newExercise: ExerciseDefinition) => void;
 }
 
 const GlobalContext = createContext<GlobalContextProps | null>(null);
@@ -347,6 +351,32 @@ export const GlobalProvider = ({ children }: PropsWithChildren) => {
     safeRemoveItem(STORAGE_KEYS.exerciseLogs);
   }, []);
 
+  const swapExercise = useCallback((
+    weekIndex: number, 
+    sessionIndex: number, 
+    exerciseIndex: number, 
+    newExercise: ExerciseDefinition
+  ) => {
+    setProgram(prev => {
+      if (!prev) return prev;
+      const updated = [...prev];
+      if (updated[weekIndex] && updated[weekIndex].sessions[sessionIndex]) {
+        const exercises = [...updated[weekIndex].sessions[sessionIndex].exercises];
+        const oldExercise = exercises[exerciseIndex];
+        exercises[exerciseIndex] = {
+          ...oldExercise,
+          exerciseId: newExercise.id,
+          name: newExercise.name,
+          details: newExercise.description,
+          sets: newExercise.defaultSets,
+          reps: newExercise.defaultReps,
+        };
+        updated[weekIndex].sessions[sessionIndex].exercises = exercises;
+      }
+      return updated;
+    });
+  }, []);
+
   return (
     <GlobalContext.Provider value={{
       fitnessGoal,
@@ -381,6 +411,7 @@ export const GlobalProvider = ({ children }: PropsWithChildren) => {
       onboardingComplete,
       setOnboardingComplete,
       resetProgress,
+      swapExercise,
     }}>
       {children}
     </GlobalContext.Provider>

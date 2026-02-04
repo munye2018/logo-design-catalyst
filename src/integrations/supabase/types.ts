@@ -14,6 +14,30 @@ export type Database = {
   }
   public: {
     Tables: {
+      rate_limits: {
+        Row: {
+          endpoint: string
+          id: string
+          request_count: number | null
+          user_id: string
+          window_start: string | null
+        }
+        Insert: {
+          endpoint: string
+          id?: string
+          request_count?: number | null
+          user_id: string
+          window_start?: string | null
+        }
+        Update: {
+          endpoint?: string
+          id?: string
+          request_count?: number | null
+          user_id?: string
+          window_start?: string | null
+        }
+        Relationships: []
+      }
       user_profiles: {
         Row: {
           created_at: string
@@ -21,7 +45,10 @@ export type Database = {
           experience_level: string
           fitness_goal: string
           id: string
+          subscription_expires_at: string | null
+          subscription_status: string | null
           training_days: number
+          trial_start_date: string | null
           updated_at: string
           user_id: string
         }
@@ -31,7 +58,10 @@ export type Database = {
           experience_level?: string
           fitness_goal?: string
           id?: string
+          subscription_expires_at?: string | null
+          subscription_status?: string | null
           training_days?: number
+          trial_start_date?: string | null
           updated_at?: string
           user_id: string
         }
@@ -41,7 +71,10 @@ export type Database = {
           experience_level?: string
           fitness_goal?: string
           id?: string
+          subscription_expires_at?: string | null
+          subscription_status?: string | null
           training_days?: number
+          trial_start_date?: string | null
           updated_at?: string
           user_id?: string
         }
