@@ -1,222 +1,113 @@
 
-
-# Feature Implementation Plan
+# Stripe Subscription Integration Plan
 
 ## Overview
 
-This plan covers four major features:
-1. **Google Sign-In** - Add social login option
-2. **Cloud Sync Testing** - Verify data syncs after onboarding  
-3. **Rate Limiting** - Protect user endpoints from abuse
-4. **30-Day Free Trial** - Implement trial period with paywall
+This plan adds real Stripe payment processing to the UpgradeModal, allowing users to subscribe to Aurora Premium ($9.99/month) after their 30-day trial ends.
 
 ---
 
-## Part 1: Google Sign-In
+## Part 1: Create Stripe Product & Price
 
-### What Changes
+Create a new Stripe product specifically for Aurora:
 
-Add a "Sign in with Google" button alongside the existing email/password form on the Auth page.
+**Product:** Aurora Premium  
+**Price:** $9.99/month (recurring)  
+**Features:** Unlimited workouts, AI form analysis, personalized programs, progress tracking
 
-### Technical Implementation
+---
 
-**Configure Google OAuth:**
-Use the built-in Lovable Cloud managed Google OAuth (no API keys needed from you).
+## Part 2: Edge Functions
 
-**Modify: `src/contexts/AuthContext.tsx`**
-- Add `signInWithGoogle()` function using `lovable.auth.signInWithOAuth("google", ...)`
-- The managed Google OAuth handles all the complexity automatically
+### New Function: `create-checkout`
 
-**Modify: `src/pages/Auth.tsx`**
-- Add Google sign-in button with Google icon
-- Handle OAuth callback and redirect
-
-**New File: `src/integrations/lovable/index.ts`** (auto-generated)
-- Lovable Cloud auth module for social login
+Creates a Stripe Checkout session for the subscription:
 
 ```text
-UI Design:
-+-----------------------------------+
-|        Welcome Back               |
-|        Sign in to Aurora          |
-|                                   |
-|  [  G  Continue with Google  ]    |
-|                                   |
-|  ─────── or ───────               |
-|                                   |
-|  Email: [________________]        |
-|  Password: [________________]     |
-|                                   |
-|  [      Sign In          ]        |
-+-----------------------------------+
+Flow:
+1. Authenticate user via JWT
+2. Check if Stripe customer exists (by email)
+3. Create checkout session with:
+   - mode: "subscription"
+   - price: Aurora Premium price ID
+   - success_url: /subscription-success
+   - cancel_url: / (home)
+4. Return session URL
 ```
 
----
+### New Function: `check-subscription`
 
-## Part 2: Rate Limiting on User Endpoints
-
-### Why Rate Limiting?
-
-Prevents abuse, protects against:
-- Brute force login attempts
-- API spam/DoS attacks
-- Resource exhaustion
-
-### Technical Implementation
-
-**New Edge Function: `supabase/functions/rate-limiter/index.ts`**
-
-A reusable rate limiting service using in-memory storage (with Redis-like pattern):
+Verifies if a user has an active Stripe subscription:
 
 ```text
-Rate Limit Strategy:
-- Auth endpoints: 5 attempts per 15 minutes per IP
-- Profile sync: 10 requests per minute per user
-- Workout sync: 30 requests per minute per user
-- General API: 100 requests per minute per user
+Flow:
+1. Authenticate user via JWT
+2. Find Stripe customer by email
+3. Check for active subscriptions
+4. Return { subscribed, subscription_end }
 ```
 
-**Implementation Approach:**
+### New Function: `customer-portal`
 
-Since this is a fitness app with sync endpoints, we'll implement rate limiting directly in the sync service calls:
-
-1. Create a rate-limit edge function that acts as a gateway
-2. Track requests by user ID + endpoint
-3. Return 429 (Too Many Requests) when limits exceeded
-
-**New File: `supabase/functions/api-gateway/index.ts`**
-
-An edge function that wraps database operations with rate limiting:
-
-```typescript
-// Rate limit configuration
-const RATE_LIMITS = {
-  'sync-profile': { requests: 10, windowMs: 60000 },
-  'sync-workout': { requests: 30, windowMs: 60000 },
-  'sync-program': { requests: 10, windowMs: 60000 },
-};
-```
-
-**Database Table: `rate_limits`**
-
-| Column | Type | Description |
-|--------|------|-------------|
-| id | uuid | Primary key |
-| user_id | uuid | User identifier |
-| endpoint | text | API endpoint key |
-| request_count | integer | Current request count |
-| window_start | timestamp | Window start time |
-
----
-
-## Part 3: 30-Day Free Trial
-
-### How It Works
-
-1. When a user signs up, record their `trial_start_date`
-2. Allow full access for 30 days
-3. After 30 days, show upgrade prompt and limit features
-4. Free tier limitations: Can view program, cannot start new sessions
-
-### Database Changes
-
-**Modify `user_profiles` table:**
-
-Add columns:
-- `trial_start_date`: timestamp (set on first login)
-- `subscription_status`: text ('trial' | 'active' | 'expired')
-- `subscription_expires_at`: timestamp (nullable)
-
-### Technical Implementation
-
-**Modify: `src/contexts/AuthContext.tsx`**
-
-- After successful login, check/set trial start date
-- Calculate days remaining
-- Expose `trialDaysRemaining` and `isTrialExpired` to context
-
-**New Component: `src/components/TrialBanner.tsx`**
-
-Shows remaining trial days or upgrade prompt:
+Opens Stripe Customer Portal for subscription management:
 
 ```text
-Trial Active (23 days left):
-+-------------------------------------------+
-| Free Trial: 23 days remaining             |
-| Upgrade now for unlimited access →        |
-+-------------------------------------------+
-
-Trial Expired:
-+-------------------------------------------+
-| Your free trial has ended                 |
-| [Upgrade to Premium] to continue training |
-+-------------------------------------------+
-```
-
-**Modify: `src/pages/Index.tsx` and `src/pages/Session.tsx`**
-
-- Check trial status before allowing session start
-- Show upgrade modal if trial expired
-
-**New Component: `src/components/UpgradeModal.tsx`**
-
-Modal explaining premium features and payment options (placeholder for Stripe integration later)
-
-### Trial Status Logic
-
-```typescript
-const getTrialStatus = (trialStartDate: Date | null) => {
-  if (!trialStartDate) return { status: 'trial', daysRemaining: 30 };
-  
-  const now = new Date();
-  const diffMs = now.getTime() - trialStartDate.getTime();
-  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-  const daysRemaining = Math.max(0, 30 - diffDays);
-  
-  return {
-    status: daysRemaining > 0 ? 'trial' : 'expired',
-    daysRemaining,
-  };
-};
+Flow:
+1. Authenticate user
+2. Find Stripe customer
+3. Create portal session
+4. Return portal URL
 ```
 
 ---
 
-## Part 4: Customizable Workout Plans
+## Part 3: Frontend Integration
 
-### Current State
+### Modify: `src/components/UpgradeModal.tsx`
 
-The program generator already creates personalized 8-week plans based on:
-- Fitness goal (muscle, weight-loss, strength, general)
-- Experience level (beginner, intermediate, advanced)
-- Training days (2-6 per week)
-- Equipment available (full-gym, home-gym, minimal)
+Update the Subscribe button to:
+1. Show loading state during checkout creation
+2. Call `create-checkout` edge function
+3. Redirect to Stripe Checkout URL
+4. Handle errors gracefully
 
-### Enhancements
+### Modify: `src/contexts/AuthContext.tsx`
 
-**1. Exercise Swapping:**
+Add subscription checking:
+1. Call `check-subscription` on login and page load
+2. Add `checkSubscription()` function to context
+3. If user has active subscription, set trial status to 'active'
+4. Refresh subscription status periodically (every 60 seconds)
 
-Allow users to swap exercises within a session for alternatives that target the same muscle group.
+### New Page: `src/pages/SubscriptionSuccess.tsx`
 
-**New Component: `src/components/ExerciseSwapModal.tsx`**
+Success page after checkout:
+1. Show success message
+2. Trigger subscription check
+3. Redirect to home after 3 seconds
 
-- Shows alternative exercises for the same muscle
-- Filters by user's available equipment
-- Persists swap to user's program
+### Modify: `src/App.tsx`
 
-**2. Volume Adjustment:**
+- Add `/subscription-success` route
 
-Allow users to adjust sets/reps per exercise based on preference.
+---
 
-**Modify: `src/pages/Session.tsx`**
+## Part 4: Config Updates
 
-- Add edit button on each exercise
-- Allow modifying sets and reps
-- Save to exerciseLogs with custom values
+### Modify: `supabase/config.toml`
 
-**3. Rest Day Flexibility:**
+Add new edge functions:
 
-Allow users to rearrange which days are rest days.
+```toml
+[functions.create-checkout]
+verify_jwt = false
+
+[functions.check-subscription]
+verify_jwt = false
+
+[functions.customer-portal]
+verify_jwt = false
+```
 
 ---
 
@@ -224,75 +115,54 @@ Allow users to rearrange which days are rest days.
 
 | File | Action | Purpose |
 |------|--------|---------|
-| `src/integrations/lovable/index.ts` | Create (auto) | Lovable Cloud auth |
-| `src/contexts/AuthContext.tsx` | Modify | Add Google sign-in, trial tracking |
-| `src/pages/Auth.tsx` | Modify | Add Google button |
-| `supabase/functions/api-gateway/index.ts` | Create | Rate limiting gateway |
-| `src/components/TrialBanner.tsx` | Create | Trial status display |
-| `src/components/UpgradeModal.tsx` | Create | Upgrade prompt |
-| `src/components/ExerciseSwapModal.tsx` | Create | Exercise alternatives |
-| `src/pages/Index.tsx` | Modify | Add trial banner, check expiry |
-| `src/pages/Session.tsx` | Modify | Block expired trials, add swap |
-| `src/lib/syncService.ts` | Modify | Add rate limit headers |
-| Database migration | Create | Add trial columns |
+| Stripe Product & Price | Create | Aurora Premium $9.99/mo |
+| `supabase/functions/create-checkout/index.ts` | Create | Checkout session creation |
+| `supabase/functions/check-subscription/index.ts` | Create | Subscription verification |
+| `supabase/functions/customer-portal/index.ts` | Create | Manage subscription |
+| `src/components/UpgradeModal.tsx` | Modify | Real Stripe checkout |
+| `src/contexts/AuthContext.tsx` | Modify | Subscription state |
+| `src/pages/SubscriptionSuccess.tsx` | Create | Post-checkout page |
+| `src/App.tsx` | Modify | Add success route |
+| `supabase/config.toml` | Modify | Edge function config |
 
 ---
 
-## Database Migration
+## User Flow
 
-```sql
--- Add trial and subscription columns to user_profiles
-ALTER TABLE user_profiles 
-ADD COLUMN trial_start_date TIMESTAMPTZ DEFAULT now(),
-ADD COLUMN subscription_status TEXT DEFAULT 'trial',
-ADD COLUMN subscription_expires_at TIMESTAMPTZ;
-
--- Create rate_limits table for tracking API usage
-CREATE TABLE rate_limits (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id UUID NOT NULL,
-  endpoint TEXT NOT NULL,
-  request_count INTEGER DEFAULT 1,
-  window_start TIMESTAMPTZ DEFAULT now(),
-  UNIQUE(user_id, endpoint)
-);
-
--- RLS for rate_limits
-ALTER TABLE rate_limits ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Service role only" ON rate_limits FOR ALL USING (false);
+```text
++------------------+     +-------------------+     +------------------+
+|   Trial Expires  | --> |   Upgrade Modal   | --> |  Stripe Checkout |
+|   or User Clicks |     |   Subscribe Now   |     |   (hosted page)  |
++------------------+     +-------------------+     +------------------+
+                                                           |
+                                                           v
++------------------+     +-------------------+     +------------------+
+|    Full Access   | <-- |   check-sub runs  | <-- |  Success Page    |
+|    Unlocked      |     |   status: active  |     |  Redirect home   |
++------------------+     +-------------------+     +------------------+
 ```
 
 ---
 
-## Implementation Order
+## Subscription Management
 
-1. **Google Sign-In** - Configure OAuth, update Auth page
-2. **Database Migration** - Add trial columns
-3. **Trial System** - Implement trial tracking and banners
-4. **Rate Limiting** - Create edge function gateway
-5. **Exercise Customization** - Add swap and edit features
-6. **Cloud Sync Testing** - Verify end-to-end sync works
+After subscribing, users can manage their subscription via Stripe Customer Portal:
+
+- View subscription details
+- Update payment method
+- Cancel subscription
+- View billing history
+
+A "Manage Subscription" button will be added to the user profile section.
 
 ---
 
 ## Testing Checklist
 
 After implementation:
-- [x] Can sign in with Google
-- [x] New users get 30-day trial countdown
-- [x] Trial banner shows days remaining
-- [x] Expired trial blocks session start
-- [x] Rate limiting returns 429 on excess requests
-- [x] Can swap exercises for alternatives
-- [ ] Program syncs to cloud after onboarding
-- [ ] Data persists across logout/login
-
-## Implementation Status
-
-**Completed:**
-- Google Sign-In via Lovable Cloud OAuth
-- 30-Day Free Trial System with TrialBanner and UpgradeModal
-- Rate Limiting Edge Function (api-gateway)
-- Exercise Swap Modal for customization
-- Trial expiry check on session access
-
+- [ ] Click "Subscribe Now" redirects to Stripe Checkout
+- [ ] Completing payment shows success page
+- [ ] User gains full access after payment
+- [ ] Trial banner disappears for active subscribers
+- [ ] Manage Subscription opens Stripe portal
+- [ ] Subscription status persists across page refreshes
