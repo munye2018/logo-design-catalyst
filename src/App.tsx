@@ -9,6 +9,7 @@ import Session from '@/pages/Session';
 import Analysis from '@/pages/Analysis';
 import History from '@/pages/History';
 import Auth from '@/pages/Auth';
+import SubscriptionSuccess from '@/pages/SubscriptionSuccess';
 import NotFound from '@/pages/NotFound';
 
 const queryClient = new QueryClient();
@@ -27,6 +28,7 @@ function App() {
               <Route path="/session/:sessionId" element={<Session />} />
               <Route path="/analysis/:exerciseId?" element={<Analysis />} />
               <Route path="/history" element={<History />} />
+              <Route path="/subscription-success" element={<SubscriptionSuccess />} />
               <Route path="*" element={<NotFound />} />
             </Routes>
           </BrowserRouter>

@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
+import { createContext, useContext, useEffect, useState, ReactNode, useCallback } from 'react';
 import { User, Session, AuthError } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
 import { lovable } from '@/integrations/lovable/index';
@@ -8,6 +8,7 @@ interface TrialStatus {
   status: 'trial' | 'active' | 'expired';
   daysRemaining: number;
   trialStartDate: Date | null;
+  subscriptionEnd: Date | null;
 }
 
 interface AuthContextType {
@@ -19,13 +20,14 @@ interface AuthContextType {
   signIn: (email: string, password: string) => Promise<{ error: AuthError | null }>;
   signInWithGoogle: () => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
+  checkSubscription: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 function calculateTrialStatus(trialStartDate: string | null): TrialStatus {
   if (!trialStartDate) {
-    return { status: 'trial', daysRemaining: 30, trialStartDate: null };
+    return { status: 'trial', daysRemaining: 30, trialStartDate: null, subscriptionEnd: null };
   }
 
   const startDate = new Date(trialStartDate);
@@ -38,6 +40,7 @@ function calculateTrialStatus(trialStartDate: string | null): TrialStatus {
     status: daysRemaining > 0 ? 'trial' : 'expired',
     daysRemaining,
     trialStartDate: startDate,
+    subscriptionEnd: null,
   };
 }
 
@@ -49,7 +52,48 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     status: 'trial',
     daysRemaining: 30,
     trialStartDate: null,
+    subscriptionEnd: null,
   });
+
+  // Check Stripe subscription status
+  const checkSubscription = useCallback(async () => {
+    if (!session?.access_token) {
+      logger.debug('No session for subscription check');
+      return;
+    }
+
+    try {
+      logger.debug('Checking subscription status...');
+      const { data, error } = await supabase.functions.invoke('check-subscription', {
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+        },
+      });
+
+      if (error) {
+        logger.error('Subscription check error:', error);
+        return;
+      }
+
+      if (data?.subscribed) {
+        logger.debug('User has active subscription', data);
+        setTrialStatus({
+          status: 'active',
+          daysRemaining: 0,
+          trialStartDate: null,
+          subscriptionEnd: data.subscription_end ? new Date(data.subscription_end) : null,
+        });
+      } else {
+        logger.debug('No active subscription found');
+        // Fall back to trial status if no subscription
+        if (user?.id) {
+          await fetchTrialStatus(user.id);
+        }
+      }
+    } catch (err) {
+      logger.error('Error checking subscription:', err);
+    }
+  }, [session?.access_token, user?.id]);
 
   // Fetch trial status from profile
   const fetchTrialStatus = async (userId: string) => {
@@ -66,17 +110,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       if (data) {
-        // Check if user has active subscription
+        // Check if user has active subscription in DB
         if (data.subscription_status === 'active') {
           const expiresAt = data.subscription_expires_at ? new Date(data.subscription_expires_at) : null;
           if (!expiresAt || expiresAt > new Date()) {
-            setTrialStatus({ status: 'active', daysRemaining: 0, trialStartDate: null });
+            setTrialStatus({ status: 'active', daysRemaining: 0, trialStartDate: null, subscriptionEnd: expiresAt });
             return;
           }
         }
 
         // Calculate trial status
-        setTrialStatus(calculateTrialStatus(data.trial_start_date));
+        const calculatedStatus = calculateTrialStatus(data.trial_start_date);
+        setTrialStatus(calculatedStatus);
       }
     } catch (err) {
       logger.error('Error fetching trial status:', err);
@@ -114,6 +159,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     return () => subscription.unsubscribe();
   }, []);
+
+  // Check subscription when session is available and periodically
+  useEffect(() => {
+    if (session?.access_token) {
+      // Check on mount
+      checkSubscription();
+
+      // Check every 60 seconds
+      const interval = setInterval(checkSubscription, 60000);
+      return () => clearInterval(interval);
+    }
+  }, [session?.access_token, checkSubscription]);
 
   const signUp = async (email: string, password: string) => {
     const redirectUrl = `${window.location.origin}/`;
@@ -154,7 +211,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await supabase.auth.signOut();
     setUser(null);
     setSession(null);
-    setTrialStatus({ status: 'trial', daysRemaining: 30, trialStartDate: null });
+    setTrialStatus({ status: 'trial', daysRemaining: 30, trialStartDate: null, subscriptionEnd: null });
   };
 
   return (
@@ -166,7 +223,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       signUp, 
       signIn, 
       signInWithGoogle,
-      signOut 
+      signOut,
+      checkSubscription,
     }}>
       {children}
     </AuthContext.Provider>
