@@ -1,6 +1,9 @@
+import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Crown, Check, X, Dumbbell, Camera, Calendar, TrendingUp } from 'lucide-react';
+import { Crown, Check, X, Dumbbell, Camera, Calendar, TrendingUp, Loader2 } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface UpgradeModalProps {
   isOpen: boolean;
@@ -16,11 +19,44 @@ const premiumFeatures = [
 ];
 
 export function UpgradeModal({ isOpen, onClose, isTrialExpired = false }: UpgradeModalProps) {
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const { session } = useAuth();
+
   if (!isOpen) return null;
 
-  const handleUpgrade = () => {
-    // Placeholder for Stripe integration
-    alert('Stripe payment integration coming soon!');
+  const handleUpgrade = async () => {
+    if (!session?.access_token) {
+      setError('Please sign in to subscribe');
+      return;
+    }
+
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const { data, error: fnError } = await supabase.functions.invoke('create-checkout', {
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+        },
+      });
+
+      if (fnError) {
+        throw new Error(fnError.message || 'Failed to create checkout session');
+      }
+
+      if (data?.url) {
+        // Open Stripe Checkout in new tab
+        window.open(data.url, '_blank');
+      } else {
+        throw new Error('No checkout URL returned');
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Something went wrong';
+      setError(message);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -76,7 +112,7 @@ export function UpgradeModal({ isOpen, onClose, isTrialExpired = false }: Upgrad
           {/* Pricing */}
           <div className="text-center py-4 border-y border-border">
             <div className="flex items-baseline justify-center gap-1">
-              <span className="text-3xl font-bold">$9.99</span>
+              <span className="text-3xl font-bold">$5</span>
               <span className="text-muted-foreground">/month</span>
             </div>
             <p className="text-sm text-muted-foreground mt-1">
@@ -84,15 +120,30 @@ export function UpgradeModal({ isOpen, onClose, isTrialExpired = false }: Upgrad
             </p>
           </div>
 
+          {/* Error Message */}
+          {error && (
+            <p className="text-sm text-destructive text-center">{error}</p>
+          )}
+
           {/* Action Buttons */}
           <div className="space-y-3">
             <Button 
               className="w-full h-12" 
               size="lg"
               onClick={handleUpgrade}
+              disabled={isLoading}
             >
-              <Crown className="w-4 h-4 mr-2" />
-              Subscribe Now
+              {isLoading ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Processing...
+                </>
+              ) : (
+                <>
+                  <Crown className="w-4 h-4 mr-2" />
+                  Subscribe Now
+                </>
+              )}
             </Button>
             
             {!isTrialExpired && (
@@ -100,6 +151,7 @@ export function UpgradeModal({ isOpen, onClose, isTrialExpired = false }: Upgrad
                 variant="ghost" 
                 className="w-full"
                 onClick={onClose}
+                disabled={isLoading}
               >
                 Maybe Later
               </Button>
