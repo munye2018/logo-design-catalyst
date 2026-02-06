@@ -4,9 +4,12 @@ import { supabase } from '@/integrations/supabase/client';
 import { lovable } from '@/integrations/lovable/index';
 import { logger } from '@/lib/logger';
 
+const TRIAL_DURATION_HOURS = 24;
+
 interface TrialStatus {
   status: 'trial' | 'active' | 'expired';
   daysRemaining: number;
+  hoursRemaining: number;
   trialStartDate: Date | null;
   subscriptionEnd: Date | null;
 }
@@ -27,18 +30,26 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 function calculateTrialStatus(trialStartDate: string | null): TrialStatus {
   if (!trialStartDate) {
-    return { status: 'trial', daysRemaining: 30, trialStartDate: null, subscriptionEnd: null };
+    return { 
+      status: 'trial', 
+      daysRemaining: 1, 
+      hoursRemaining: TRIAL_DURATION_HOURS,
+      trialStartDate: null, 
+      subscriptionEnd: null 
+    };
   }
 
   const startDate = new Date(trialStartDate);
   const now = new Date();
   const diffMs = now.getTime() - startDate.getTime();
-  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-  const daysRemaining = Math.max(0, 30 - diffDays);
+  const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+  const hoursRemaining = Math.max(0, TRIAL_DURATION_HOURS - diffHours);
+  const daysRemaining = Math.ceil(hoursRemaining / 24);
 
   return {
-    status: daysRemaining > 0 ? 'trial' : 'expired',
+    status: hoursRemaining > 0 ? 'trial' : 'expired',
     daysRemaining,
+    hoursRemaining,
     trialStartDate: startDate,
     subscriptionEnd: null,
   };
@@ -48,9 +59,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
-  const [trialStatus, setTrialStatus] = useState<TrialStatus>({
+const [trialStatus, setTrialStatus] = useState<TrialStatus>({
     status: 'trial',
-    daysRemaining: 30,
+    daysRemaining: 1,
+    hoursRemaining: TRIAL_DURATION_HOURS,
     trialStartDate: null,
     subscriptionEnd: null,
   });
@@ -75,11 +87,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      if (data?.subscribed) {
+if (data?.subscribed) {
         logger.debug('User has active subscription', data);
         setTrialStatus({
           status: 'active',
           daysRemaining: 0,
+          hoursRemaining: 0,
           trialStartDate: null,
           subscriptionEnd: data.subscription_end ? new Date(data.subscription_end) : null,
         });
@@ -111,10 +124,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       if (data) {
         // Check if user has active subscription in DB
-        if (data.subscription_status === 'active') {
+if (data.subscription_status === 'active') {
           const expiresAt = data.subscription_expires_at ? new Date(data.subscription_expires_at) : null;
           if (!expiresAt || expiresAt > new Date()) {
-            setTrialStatus({ status: 'active', daysRemaining: 0, trialStartDate: null, subscriptionEnd: expiresAt });
+            setTrialStatus({ status: 'active', daysRemaining: 0, hoursRemaining: 0, trialStartDate: null, subscriptionEnd: expiresAt });
             return;
           }
         }
@@ -211,7 +224,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await supabase.auth.signOut();
     setUser(null);
     setSession(null);
-    setTrialStatus({ status: 'trial', daysRemaining: 30, trialStartDate: null, subscriptionEnd: null });
+    setTrialStatus({ status: 'trial', daysRemaining: 1, hoursRemaining: TRIAL_DURATION_HOURS, trialStartDate: null, subscriptionEnd: null });
   };
 
   return (

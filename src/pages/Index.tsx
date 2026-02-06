@@ -2,11 +2,12 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useGlobalContext } from '@/context/GlobalContext';
 import { useAuth } from '@/contexts/AuthContext';
+import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { TrialBanner } from '@/components/TrialBanner';
 import { UpgradeModal } from '@/components/UpgradeModal';
-import { Camera, Calendar, Dumbbell, Activity, LogIn, LogOut, User } from 'lucide-react';
+import { Camera, Calendar, Dumbbell, Activity, LogIn, LogOut, User, CreditCard, Loader2 } from 'lucide-react';
 
 // Phase descriptions
 const PHASE_LABELS: Record<string, string> = {
@@ -19,8 +20,9 @@ const PHASE_LABELS: Record<string, string> = {
 export default function Index() {
   const navigate = useNavigate();
   const { program, onboardingComplete, currentWeek } = useGlobalContext();
-  const { user, signOut, loading, trialStatus } = useAuth();
+  const { user, session, signOut, loading, trialStatus } = useAuth();
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
+  const [isManagingSubscription, setIsManagingSubscription] = useState(false);
 
   // If not onboarded, show welcome screen
   if (!onboardingComplete || !program) {
@@ -84,8 +86,23 @@ export default function Index() {
   const todaySession = currentWeekData?.sessions[todayIndex];
   const phaseLabel = PHASE_LABELS[currentWeekData?.phase] || currentWeekData?.phase;
 
-  const handleSignOut = async () => {
+const handleSignOut = async () => {
     await signOut();
+  };
+
+  const handleManageSubscription = async () => {
+    setIsManagingSubscription(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('customer-portal', {
+        headers: { Authorization: `Bearer ${session?.access_token}` },
+      });
+      if (error) throw error;
+      if (data?.url) window.open(data.url, '_blank');
+    } catch (err) {
+      console.error('Failed to open portal:', err);
+    } finally {
+      setIsManagingSubscription(false);
+    }
   };
 
   const handleStartSession = (sessionIndex: number) => {
@@ -105,13 +122,30 @@ export default function Index() {
             <Activity className="w-6 h-6 text-primary" />
             <h1 className="text-xl font-bold">Aurora</h1>
           </div>
-          <div className="flex items-center gap-2">
+<div className="flex items-center gap-2">
             {user ? (
               <>
                 <div className="flex items-center gap-2 text-sm text-muted-foreground mr-2">
                   <User className="w-4 h-4" />
                   <span className="hidden sm:inline">{user.email}</span>
                 </div>
+                {trialStatus.status === 'active' && (
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    onClick={handleManageSubscription}
+                    disabled={isManagingSubscription}
+                  >
+                    {isManagingSubscription ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <>
+                        <CreditCard className="w-4 h-4 mr-2" />
+                        <span className="hidden sm:inline">Manage</span>
+                      </>
+                    )}
+                  </Button>
+                )}
                 <Button variant="ghost" size="sm" onClick={handleSignOut} disabled={loading}>
                   <LogOut className="w-4 h-4" />
                 </Button>

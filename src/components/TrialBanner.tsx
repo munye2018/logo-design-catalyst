@@ -42,24 +42,34 @@ export function TrialBanner({ onUpgrade }: TrialBannerProps) {
     );
   }
 
-  // Trial active - show days remaining
-  const isLowDays = trialStatus.daysRemaining <= 7;
+  // Trial active - show hours remaining
+  const { hoursRemaining } = trialStatus;
+  const isLowTime = hoursRemaining <= 6;
+  const isVeryLowTime = hoursRemaining <= 1;
+
+  // Format the time display
+  const getTimeDisplay = () => {
+    if (isVeryLowTime) {
+      return 'Less than 1 hour remaining';
+    }
+    return `${hoursRemaining} ${hoursRemaining === 1 ? 'hour' : 'hours'} remaining`;
+  };
 
   return (
     <div className={`${
-      isLowDays 
+      isLowTime 
         ? 'bg-amber-500/10 border-amber-500/20' 
         : 'bg-primary/10 border-primary/20'
     } border rounded-lg p-4`}>
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <Clock className={`w-5 h-5 ${isLowDays ? 'text-amber-500' : 'text-primary'}`} />
+          <Clock className={`w-5 h-5 ${isLowTime ? 'text-amber-500' : 'text-primary'}`} />
           <div>
-            <p className={`font-medium ${isLowDays ? 'text-amber-500' : 'text-primary'}`}>
-              Free Trial: {trialStatus.daysRemaining} {trialStatus.daysRemaining === 1 ? 'day' : 'days'} remaining
+            <p className={`font-medium ${isLowTime ? 'text-amber-500' : 'text-primary'}`}>
+              Free Trial: {getTimeDisplay()}
             </p>
             <p className="text-sm text-muted-foreground">
-              {isLowDays 
+              {isLowTime 
                 ? 'Upgrade now to keep your progress' 
                 : 'Enjoy full access to all features'}
             </p>
@@ -68,7 +78,7 @@ export function TrialBanner({ onUpgrade }: TrialBannerProps) {
         <div className="flex items-center gap-2">
           <Button 
             size="sm" 
-            variant={isLowDays ? 'default' : 'outline'}
+            variant={isLowTime ? 'default' : 'outline'}
             onClick={onUpgrade}
           >
             Upgrade
